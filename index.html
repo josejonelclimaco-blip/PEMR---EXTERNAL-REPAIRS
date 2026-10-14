@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>External Client Repairs | PEMR Motorpool</title>
+<!-- STEP 3: Firebase SDK (compat version = simplest for single-file HTML) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --maroon:#7A1F2B; --maroon-dk:#5a1520; --gold:#C9A227; --gold-lt:#f6edcf;
+    --ink:#222; --muted:#666; --line:#ddd; --bg:#f7f5f2; --white:#fff;
+    --ok:#2e7d32; --warn:#b26a00; --bad:#b3261e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);font-size:14px}
+  header{background:var(--maroon);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-bottom:4px solid var(--gold)}
+  header h1{margin:0;font-size:20px}
+  header small{display:block;color:var(--gold-lt);font-size:12px}
+  .grow{flex:1}
+  .mode{font-size:12px;padding:4px 10px;border-radius:12px;background:var(--maroon-dk);border:1px solid var(--gold)}
+  button{font-family:inherit;font-size:13px;border:0;border-radius:4px;padding:8px 14px;cursor:pointer}
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--gold);outline-offset:1px}
+  .btn-gold{background:var(--gold);color:var(--maroon-dk);font-weight:bold}
+  .btn-maroon{background:var(--maroon);color:#fff}
+  .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  main{padding:20px;max-width:1400px;margin:0 auto}
+
+  /* Pipeline: the signature element. Each JO moves left to right. */
+  .pipeline{display:grid;grid-template-columns:repeat(8,1fr);gap:0;background:#fff;border:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+  .stage{padding:12px 10px;border-right:1px solid var(--line);cursor:pointer;position:relative;min-width:110px;background:#fff;text-align:left}
+  .stage:last-child{border-right:0}
+  .stage .n{font-size:28px;font-weight:bold;color:var(--maroon)}
+  .stage .l{font-size:12px;color:var(--muted)}
+  .stage.active{background:var(--gold-lt);box-shadow:inset 0 -4px 0 var(--gold)}
+  .stage:hover{background:#fbf7ea}
+
+  .money{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:18px;padding:12px 16px;background:#fff;border-left:4px solid var(--maroon)}
+  .money div b{display:block;font-size:20px}
+  .money div span{font-size:12px;color:var(--muted)}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  input,select,textarea{font-family:inherit;font-size:13px;padding:8px;border:1px solid #ccc;border-radius:4px;background:#fff}
+  .tablewrap{overflow-x:auto;background:#fff;border:1px solid var(--line)}
+  table{border-collapse:collapse;width:100%;min-width:1000px}
+  th{background:var(--maroon);color:#fff;text-align:left;padding:9px;font-size:12px;position:sticky;top:0}
+  td{padding:8px 9px;border-bottom:1px solid #eee;vertical-align:top}
+  tr:hover td{background:#fcfaf3}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;white-space:nowrap}
+  .num{text-align:right;white-space:nowrap}
+  .age-bad{color:var(--bad);font-weight:bold}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+
+  dialog{border:0;border-top:5px solid var(--gold);padding:0;width:min(980px,96vw);border-radius:4px}
+  /* Line items: parts utilized + assigned personnel */
+  .items{border:1px solid var(--line);border-left:4px solid var(--gold);padding:10px;background:#fcfbf7}
+  .items-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:var(--maroon)}
+  .items-h small{color:var(--muted);font-weight:normal}
+  .li-wrap{overflow-x:auto}
+  table.li{min-width:640px}
+  table.li th{position:static;background:var(--maroon-dk);font-size:11px;padding:6px}
+  table.li td{padding:4px;border-bottom:1px solid #eee}
+  table.li input{width:100%;padding:6px}
+  table.li .amt{font-weight:bold;min-width:90px}
+  table.li tfoot td{font-weight:bold;border:0;padding-top:6px}
+  .rm{padding:4px 8px;color:var(--bad)}
+  .cell-list{margin:0;padding-left:16px;font-size:12px}
+  .cell-list li{margin-bottom:2px}
+  .lead{font-size:12px;color:var(--maroon);font-weight:bold}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  .dlg-h{background:var(--maroon);color:#fff;padding:12px 16px;font-weight:bold}
+  .form{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;padding:16px}
+  .form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .form .full{grid-column:1/-1}
+  .dlg-f{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line)}
+  @media(max-width:640px){.form{grid-template-columns:1fr}}
+
+  dialog.roster{width:min(860px,96vw)}
+  .rbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px 0}
+  .rbar #rosterQ{flex:1;min-width:200px}
+  .rlist{max-height:55vh;overflow:auto;padding:8px 16px}
+  .rg{border:1px solid var(--line);border-left:4px solid var(--maroon);margin:0 0 10px;padding:6px 10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 12px}
+  .rg legend{font-weight:bold;color:var(--maroon);padding:0 6px}
+  .rg legend button{padding:2px 8px;font-size:11px;margin-left:6px}
+  .rp{display:flex;gap:8px;align-items:flex-start;padding:4px;border-radius:4px;cursor:pointer}
+  .rp:hover{background:var(--gold-lt)}
+  .rp span{display:flex;flex-direction:column}
+  .rp small{color:var(--muted);font-size:11px}
+  .rp input{margin-top:3px}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--maroon-dk);color:#fff;padding:10px 16px;border-left:4px solid var(--gold);display:none}
+
+  /* Detailed print area (built by JS right before printing) */
+  /* ===== Print layout: A4 portrait, minimum 12pt text ===== */
+  .print-only{display:none}
+  .ph{border-bottom:2px solid var(--gold);padding-bottom:4px;margin-bottom:8px}
+  .ph .co{color:var(--maroon);font-weight:bold;font-size:15pt}
+  .ph .t{font-size:13pt;font-weight:bold}
+  .ph small{color:#444;font-size:12pt;display:block}
+  .jo{border:1px solid #999;margin-bottom:8px}
+  .jo-h{background:#7A1F2B;color:#fff;padding:4px 8px;display:flex;justify-content:space-between;font-weight:bold;font-size:13pt;page-break-after:avoid;break-after:avoid}
+  .jo-info{display:grid;grid-template-columns:repeat(2,1fr);gap:3px 14px;padding:5px 8px;font-size:12pt;border-bottom:1px solid #ccc}
+  .jo-info .w2,.jo-info .w4{grid-column:1/-1}
+  .jo-info b{color:#7A1F2B;font-weight:bold;font-size:12pt;margin-right:4px}
+  .jo-sec{padding:5px 8px}
+  .jo-sec h4{margin:2px 0 4px;color:#7A1F2B;font-size:13pt;page-break-after:avoid;break-after:avoid}
+  .pt{width:100%;min-width:0;font-size:12pt;border-collapse:collapse}
+  .pt th{padding:3px 5px;font-size:12pt;position:static}
+  .pt td{padding:3px 5px;border:1px solid #bbb;line-height:1.25}
+  .pt tr{page-break-inside:avoid;break-inside:avoid}
+  .pt td:nth-child(5),.pt .mg{white-space:nowrap}
+  .pt thead{display:table-header-group}
+  .pt tfoot td{font-weight:bold;background:#f6edcf}
+  .gt{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px 22px;padding:5px 8px;border-top:2px solid #C9A227;font-size:13pt}
+  .gt b{color:#7A1F2B}
+  .mg{vertical-align:middle;text-align:center}
+  .sigs{page-break-inside:avoid;break-inside:avoid;font-size:12pt}
+  .conf{display:grid;gap:22px;margin-top:14px}
+  .conf.c2{grid-template-columns:1fr 1fr}.conf.c3{grid-template-columns:1fr 1fr 1fr}
+  .conf .sl{display:block;margin-bottom:26px}
+  .conf .sline{border-top:1px solid #000;margin-bottom:2px}
+  .conf small{color:#444;font-size:12pt}
+
+  .sign{display:none}
+  /* Shared by real print and the hidden fit-to-page measurement */
+  .measure .print-only{display:block}
+  .measure .sign{display:grid}
+  .sign-on{grid-template-columns:repeat(3,1fr);gap:22px;margin-top:12px}
+  .sign-on > div .sl{display:block;margin-bottom:26px}
+  .sign-on > div .sline{border-top:1px solid #000;margin-bottom:2px}
+  .measure{position:absolute;left:-10000px;top:0;width:194mm;background:#fff;font-size:14px}
+  @media print{
+    @page{size:A4 portrait;margin:10mm}
+    header .grow~*,.toolbar,.act,.pipeline{display:none!important}
+    body{background:#fff}
+    th{background:#7A1F2B!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    header,.money,.tablewrap,dialog,.toast{display:none!important}
+    main{padding:0;max-width:none;zoom:var(--fit,1)}
+    .print-only{display:block}
+    .jo-h,.pt tfoot td,.pt th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .sign{display:grid}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>External Client Repairs</h1>
+    <small>Bigben Motorpool · PEMR Job Orders for outside clients</small>
+  </div>
+  <div class="grow"></div>
+  <span class="mode" id="mode">Offline mode</span>
+  <button class="btn-gold" id="btnNew">New job order</button>
+  <button class="btn-ghost" style="color:#fff;border-color:var(--gold)" id="btnLock">Unlock editing</button>
+</header>
+
+<main>
+  <div class="pipeline" id="pipeline"></div>
+
+  <div class="money" id="money"></div>
+
+  <div class="toolbar">
+    <input id="q" placeholder="Search JO, client, plate, complaint…" style="min-width:260px">
+    <select id="fClient"><option value="">All clients</option></select>
+    <button class="btn-ghost" id="btnClear">Show all</button>
+    <div class="grow"></div>
+    <button class="btn-ghost" id="btnImport">Import past billings</button>
+    <button class="btn-ghost" id="btnCsv">Export CSV</button>
+    <button class="btn-maroon" id="btnPrint">Print report</button>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>JO No.</th><th>Date in</th><th>Client</th><th>Unit / Plate</th><th>Complaint / scope</th>
+        <th>Parts utilized</th><th>Assigned personnel</th><th>Status</th><th>Days</th><th class="num">Parts</th><th class="num">Labor</th>
+        <th class="num">Total</th><th>SOA No.</th><th class="act"></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="print-only" id="printArea"></div>
+
+  <div class="sigs">
+  <div class="sign sign-on">
+    <div><span class="sl">Prepared by:</span><div class="sline"></div><b>Kristyle Grace Cantuba</b><br>Junior Motorpool Supervisor</div>
+    <div><span class="sl">Noted by:</span><div class="sline"></div><b>Jose Jonel Climaco</b><br>EMR Manager</div>
+    <div><span class="sl">Approved by:</span><div class="sline"></div><b>Engr. Michael Rodulfo</b><br>Division Engineer</div>
+  </div>
+  <div class="print-only" id="printAck"></div>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg-h" id="dlgTitle">New job order</div>
+  <form class="form" id="frm" method="dialog">
+    <label>JO No.<input name="joNo" readonly></label>
+    <label>Date received<input type="date" name="dateIn" required></label>
+    <label>Client<input name="client" list="clientList" placeholder="e.g. Feedmix Specialist" required></label>
+    <label>Contact person / number<input name="contact"></label>
+    <label>Unit description<input name="unit" placeholder="e.g. Isuzu Forward 6W"></label>
+    <label>Plate / body no.<input name="plate"></label>
+    <label class="full">Complaint / scope of work<textarea name="scope" rows="3"></textarea></label>
+    <div class="full items">
+      <div class="items-h"><b>Parts utilized <small>· amount = qty × unit cost</small></b>
+        <span><button type="button" class="btn-ghost" id="addPartsMany">Add multiple</button>
+        <button type="button" class="btn-ghost" id="addParts">Add part</button></span></div>
+      <div class="li-wrap"><table class="li">
+        <thead><tr><th>Part description</th><th>Part no.</th><th>Qty</th><th>Unit</th><th>Unit cost (₱)</th><th>Source / PR no.</th><th>Amount</th><th></th></tr></thead>
+        <tbody id="partsBody"></tbody>
+        <tfoot><tr><td colspan="6" style="text-align:right">Total parts</td><td class="num" id="partsTot">₱0.00</td><td></td></tr></tfoot>
+      </table></div>
+    </div>
+    <div class="full items">
+      <div class="items-h"><b>Assigned personnel <small>· amount = hours × rate</small></b>
+        <span><button type="button" class="btn-gold" id="pickRoster">Pick from roster</button>
+        <button type="button" class="btn-ghost" id="addPersMany">Add multiple</button>
+        <button type="button" class="btn-ghost" id="addPers">Add personnel</button></span></div>
+      <div class="li-wrap"><table class="li">
+        <thead><tr><th>Name</th><th>Position</th><th>Task done</th><th>Date</th><th>Hours</th><th>Rate/hr (₱)</th><th>Amount</th><th></th></tr></thead>
+        <tbody id="persBody"></tbody>
+        <tfoot><tr><td colspan="6" style="text-align:right">Total labor</td><td class="num" id="persTot">₱0.00</td><td></td></tr></tfoot>
+      </table></div>
+    </div>
+    <label>Lead mechanic / foreman<input name="mechanic" list="staffList"></label>
+    <label>Status<select name="status" id="statusSel"></select></label>
+    <label>Parts cost (₱) <small id="partsHint"></small><input type="number" step="0.01" name="parts" value="0"></label>
+    <label>Labor cost (₱) <small id="laborHint"></small><input type="number" step="0.01" name="labor" value="0"></label>
+    <label>Date completed<input type="date" name="dateDone"></label>
+    <label>Date released<input type="date" name="dateOut"></label>
+    <label>SOA / billing no.<input name="soa"></label>
+    <label>Date paid<input type="date" name="datePaid"></label>
+    <label class="full">Remarks<textarea name="remarks" rows="2"></textarea></label>
+  </form>
+  <div class="dlg-f">
+    <button class="btn-ghost" id="btnDel" style="margin-right:auto;color:var(--bad)">Delete</button>
+    <button class="btn-ghost" id="btnPrintOne">Print this JO</button>
+    <button class="btn-ghost" id="btnCancel">Cancel</button>
+    <button class="btn-maroon" id="btnSave">Save job order</button>
+  </div>
+</dialog>
+<dialog id="rosterDlg" class="roster">
+  <div class="dlg-h">Pick personnel from roster</div>
+  <div class="rbar">
+    <input id="rosterQ" placeholder="Search name, position or section…">
+    <input id="rosterTask" placeholder="Task done (optional, shared)">
+    <input id="rosterDate" type="date">
+  </div>
+  <div id="rosterList" class="rlist"></div>
+  <div class="dlg-f">
+    <button class="btn-ghost" id="rosterCancel">Cancel</button>
+    <button class="btn-maroon" id="rosterAdd">Add selected</button>
+  </div>
+</dialog>
+<datalist id="clientList"></datalist>
+<datalist id="partList"></datalist>
+<datalist id="staffList"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   STEP 2: Paste your Firebase config here (Project settings > Your apps).
+   Leave apiKey empty to run in Offline mode (saves to this browser only).
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyB_9CwYHMCUpPlSMT3ES6WlPcFr1EE8UaY",
+  authDomain: "pemr---external-repairs.firebaseapp.com",
+  projectId: "pemr---external-repairs",
+  storageBucket: "pemr---external-repairs.firebasestorage.app",
+  messagingSenderId: "441751082916",
+  appId: "1:441751082916:web:4b65b65a5baa6766bd5331",
+  measurementId: "G-HWLLRTT21P"
+};
+const COLLECTION = "externalRepairs";   // Firestore collection name
+const EDIT_PIN   = "EMR6767";           // PIN to unlock editing
+
+/* Workflow stages, in order. Edit names here if your process differs. */
+const STAGES = [
+  {k:"Received",      c:"#555"},
+  {k:"Diagnosing",    c:"#6a4c93"},
+  {k:"Waiting parts", c:"#b26a00"},
+  {k:"In progress",   c:"#1565c0"},
+  {k:"Completed",     c:"#2e7d32"},
+  {k:"Released",      c:"#00796b"},
+  {k:"Billed",        c:"#7A1F2B"},
+  {k:"Paid",          c:"#8a6d00"}
+];
+
+/* ---------- state ---------- */
+let data = [], unlocked = false, stageFilter = "", editingId = null, db = null;
+const $ = s => document.querySelector(s);
+const peso = n => "₱" + (Number(n)||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const today = () => new Date().toISOString().slice(0,10);
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",2200)}
+
+/* ---------- data layer: Firebase if configured, else localStorage ---------- */
+const store = {
+  init(){
+    if(firebaseConfig.apiKey){
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      $("#mode").textContent = "Live · Firebase";
+      db.collection(COLLECTION).onSnapshot(snap=>{
+        data = snap.docs.map(d=>({id:d.id,...d.data()}));
+        render();
+      }, err=>{ toast("Firebase error: "+err.message); });
+    } else {
+      try{ data = JSON.parse(localStorage.getItem(COLLECTION)||"[]"); }catch(e){ data=[]; }
+      render();
+    }
+  },
+  saveLocal(){ try{ localStorage.setItem(COLLECTION, JSON.stringify(data)); }catch(e){} },
+  async upsert(rec){
+    rec.updatedAt = new Date().toISOString();
+    if(db){
+      const {id,...body} = rec;
+      if(id) await db.collection(COLLECTION).doc(id).set(body,{merge:true});
+      else   await db.collection(COLLECTION).add(body);
+    } else {
+      if(rec.id){ data = data.map(r=>r.id===rec.id?rec:r); }
+      else { rec.id = "L"+Date.now(); data.push(rec); }
+      this.saveLocal(); render();
+    }
+  },
+  async remove(id){
+    if(db) await db.collection(COLLECTION).doc(id).delete();
+    else { data = data.filter(r=>r.id!==id); this.saveLocal(); render(); }
+  }
+};
+
+
+/* =====================================================================
+   PAST BILLINGS (from signed external-repair billing statements)
+   Imported once via the "Import past billings" button. Each has a
+   unique ref so it is never imported twice.
+   ===================================================================== */
+const PAST_BILLINGS = [
+  { ref:"BILL-REMICON-DAEWOO", date:"2026-07-28", client:"Clean O2 Remicon Corp.", contact:"",
+    unit:"Daewoo Mega 400-V Wheel Loader (S/N 3077)", plate:"",
+    scope:"Repair and full reconditioning: underchassis (hydraulic & steering), brake system, electrical, engine repair",
+    parts:[
+      ["Hydraulic Filter","1","pc",2000,"P.O. #67848 (12/22/2025)"],
+      ["Transmission Filter (2 pcs)","1","lot",1040,"P.O. #67848 (12/22/2025)"],
+      ["Steering Pump Assembly","1","pc",178500,"P.O. #68206 (01/21/2026)"],
+      ["Main Pump","1","pc",100000,"P.O. #68206 (01/21/2026)"],
+      ["Ring Guide (4 pcs)","1","set",14092.38,"P.O. #68550 (02/09/2026)"],
+      ["U-Ring (4 pcs)","1","set",32552.49,"P.O. #68550 (02/09/2026)"],
+      ["U-Ring (4 pcs)","1","set",19222.74,"P.O. #68550 (02/09/2026)"],
+      ["Ring Support (4 pcs)","1","set",16053.68,"P.O. #68550 (02/09/2026)"],
+      ["Ring Snap (4 pcs)","1","set",4800.45,"P.O. #68550 (02/09/2026)"],
+      ["Ring Support (4 pcs)","1","set",30493.92,"P.O. #68550 (02/09/2026)"],
+      ["Delivery Freight","1","lot",1000,"P.O. #68550 (02/09/2026)"],
+      ["Starter Assembly","1","pc",16500,"P.O. #69676 (04/14/2026)"],
+      ["Injection Pump Calibration and Recondition","1","lot",22400,"P.O. #69818 (04/23/2026)"],
+      ["Warehouse stocks","1","lot",49926,"Internal stock requisition (no P.O.)"]
+    ],
+    labor:36050, remarks:"Labor: 5 personnel (direct labor, lump sum). Billing date approximate (statement prepared late Jul 2026)." },
+  { ref:"BILL-NCZ5029", date:"2026-08-28", client:"Mr. Benjamin Eusebio", contact:"CC: Ms. Nenita Avendaño (Accounting Head)",
+    unit:"Lexus", plate:"NCZ-5029",
+    scope:"Repair and repaint of damaged parts (primer, base coat, top coat, buffing/wax, prep sanding materials)",
+    partsLump:2293.50, labor:3800, remarks:"Billing dated Aug 28, 2026; checked Sep 4, received Sep 7, 2026." },
+  { ref:"BILL-AWA2547", date:"2026-09-15", client:"Feedmix Specialist, Inc.", contact:"CC: Mr. Orly Bernardo",
+    unit:"Toyota Hilux", plate:"AWA 2547",
+    scope:"Engine PMS (replace oil & fuel filter @ 270,436 km); cleaning of fuel system; check/repair brake system; replace defective secondary brake master assy; bleed brake fluid",
+    partsLump:4087, labor:5700, remarks:"" },
+  { ref:"BILL-NID4894", date:"2026-09-18", client:"Feedmix Specialist, Inc.", contact:"CC: Mr. Orly Bernardo",
+    unit:"UD Tractor Head", plate:"NID 4894",
+    scope:"Scan unit; troubleshoot/repair electrical system problem; check/clean electrical system; replace 5 pcs busted auto fuse",
+    partsLump:3197.20, labor:6100, remarks:"" },
+  { ref:"BILL-MANITOU", date:"2026-09-22", client:"Mr. Benjamin Eusebio", contact:"CC: Ms. Nenita Avendaño (Accounting Head)",
+    unit:"Manitou Telehandler", plate:"",
+    scope:"Reconditioning of unit; body repaint; engine PMS; underchassis PMS",
+    partsLump:68886.22, labor:45650, remarks:"" },
+  { ref:"BILL-NHA4789", date:"2026-09-25", client:"Feedmix Specialist, Inc.", contact:"CC: Mr. Aaron Samson",
+    unit:"Tractor Head", plate:"NHA 4789",
+    scope:"Pneumatic system trouble (unit towed in); compressor overhaul; air hose/fittings replacement; alternator repair",
+    partsLump:6877, labor:25440, remarks:"" },
+  { ref:"BILL-NLC2798", date:"2026-09-25", client:"Mr. Zoe Calingasa", contact:"CC: Ms. Nenita Avendaño (Accounting Head)",
+    unit:"Howo Dump Truck", plate:"NLC 2798",
+    scope:"Door repair/alignment; removal of siding extension; side mirror replacement; tailgate stopper repair",
+    parts:[["Oxygen / Acetylene","1","lot",1000,""]], labor:5600, remarks:"" },
+  { ref:"BILL-CAT1049", date:"2026-09-30", client:"Mr. Zoe Calingasa", contact:"CC: Ms. Nenita Avendaño (Accounting Head)",
+    unit:"Mitsubishi Montero", plate:"CAT 1049",
+    scope:"Repair and repaint of damaged front bumper; pull-out and replacement of oil cooler assembly",
+    parts:[["Oil Cooler Assembly","1","pc",7500,""]], labor:5510, remarks:"" }
+];
+
+async function importPastBillings(){
+  if(!unlocked) return toast("Unlock editing first");
+  const have = new Set(data.map(r=>r.importRef).filter(Boolean));
+  const todo = PAST_BILLINGS.filter(b=>!have.has(b.ref)).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!todo.length) return toast("All past billings are already in the dashboard");
+  const sum = todo.reduce((a,b)=>a+(b.parts?b.parts.reduce((x,p)=>x+p[3],0):b.partsLump)+b.labor,0);
+  if(!confirm(`Import ${todo.length} past billing(s) totaling ${peso(sum)}?\nThey will be saved as status "Billed".`)) return;
+  const y = new Date().getFullYear(), pre = `EXT-${y}-`;
+  let n = data.filter(r=>(r.joNo||"").startsWith(pre)).map(r=>parseInt(r.joNo.slice(pre.length))||0).reduce((a,b)=>Math.max(a,b),0);
+  for(const b of todo){
+    const partsList = (b.parts||[]).map(([desc,qty,uom,cost,source])=>({desc,partNo:"",qty:+qty,uom,cost,source,amount:+qty*cost}));
+    const partsAmt = partsList.length ? partsList.reduce((a,p)=>a+p.amount,0) : b.partsLump;
+    await store.upsert({
+      joNo: pre + String(++n).padStart(4,"0"), importRef:b.ref,
+      dateIn:b.date, dateDone:b.date, dateOut:b.date, client:b.client, contact:b.contact,
+      unit:b.unit, plate:b.plate, scope:b.scope, mechanic:"", status:"Billed", soa:"", datePaid:"",
+      partsList, personnel:[], parts:Math.round(partsAmt*100)/100, labor:b.labor,
+      remarks:("Imported from billing record (billing date "+b.date+"). "+b.remarks).trim(),
+      createdAt:new Date().toISOString()
+    });
+  }
+  toast(`Imported ${todo.length} past billing(s)`);
+}
+
+/* ---------- JO number: EXT-YYYY-0001 ---------- */
+function nextJoNo(){
+  const y = new Date().getFullYear(), pre = `EXT-${y}-`;
+  const max = data.filter(r=>(r.joNo||"").startsWith(pre))
+                  .map(r=>parseInt(r.joNo.slice(pre.length))||0)
+                  .reduce((a,b)=>Math.max(a,b),0);
+  return pre + String(max+1).padStart(4,"0");
+}
+
+/* Days in shop: from date in until released (or today if still inside) */
+function daysIn(r){
+  if(!r.dateIn) return "";
+  const end = r.dateOut ? new Date(r.dateOut) : new Date();
+  return Math.max(0, Math.round((end - new Date(r.dateIn))/86400000));
+}
+
+/* =====================================================================
+   LINE ITEMS: Parts utilized + Assigned personnel
+   Each JO stores two arrays: partsList[] and personnel[]
+   ===================================================================== */
+const LINES = {
+  parts: {
+    body:"#partsBody", tot:"#partsTot", key:"partsList", field:"parts", hint:"#partsHint",
+    qty:"qty", rate:"cost", main:"desc", list:"partList",
+    cols:[
+      {f:"desc",   ph:"e.g. Brake pad set", list:"partList"},
+      {f:"partNo", ph:"Part no."},
+      {f:"qty",    type:"number", def:1, w:65},
+      {f:"uom",    def:"pc", w:60},
+      {f:"cost",   type:"number", def:0, w:100},
+      {f:"source", ph:"Stock / PR-0012", w:120}
+    ]
+  },
+  pers: {
+    body:"#persBody", tot:"#persTot", key:"personnel", field:"labor", hint:"#laborHint",
+    qty:"hours", rate:"rate", main:"name", list:"staffList",
+    cols:[
+      {f:"name",     ph:"Full name", list:"staffList"},
+      {f:"position", ph:"Mechanic / Welder / Electrician"},
+      {f:"task",     ph:"e.g. Replace clutch"},
+      {f:"date",     type:"date", w:140},
+      {f:"hours",    type:"number", def:0, w:70},
+      {f:"rate",     type:"number", def:0, w:90}
+    ]
+  }
+};
+
+function addLine(kind, item={}){
+  const L = LINES[kind], tr = document.createElement("tr");
+  tr.innerHTML = L.cols.map(c=>`<td><input data-f="${c.f}" type="${c.type||"text"}"
+      ${c.type==="number"?'step="any" min="0"':""} ${c.list?`list="${c.list}"`:""}
+      placeholder="${c.ph||""}" ${c.w?`style="min-width:${c.w}px"`:""}
+      value="${esc(item[c.f] ?? c.def ?? "")}"></td>`).join("")
+    + `<td class="num amt">₱0.00</td><td><button type="button" class="btn-ghost rm" title="Remove line">✕</button></td>`;
+  tr.querySelector(".rm").onclick = ()=>{ tr.remove(); recalc(); };
+  tr.querySelectorAll("input").forEach(i=>i.oninput = recalc);
+  // Pick a part/person used before → auto-fill the rest from the last record
+  tr.querySelector(`[data-f="${L.main}"]`).onchange = e=>{
+    if(kind==="pers"){
+      const rr = rosterFind(e.target.value);
+      if(rr){ tr.querySelector('[data-f="name"]').value = rr.name; tr.querySelector('[data-f="position"]').value = rr.position; }
+    }
+    const prev = lastUsed(kind, e.target.value);
+    if(!prev){ recalc(); return; }
+    L.cols.forEach(c=>{
+      const inp = tr.querySelector(`[data-f="${c.f}"]`);
+      if(["partNo","uom","cost","position","rate"].includes(c.f) && prev[c.f]!=null && !(c.f==="position" && rosterFind(e.target.value))) inp.value = prev[c.f];
+    });
+    recalc();
+  };
+  // Enter on any field of the last line → add a new blank line
+  tr.querySelectorAll("input").forEach(i=>i.onkeydown = e=>{
+    if(e.key!=="Enter") return;
+    e.preventDefault();
+    if(tr===$(L.body).lastElementChild) addLine(kind);
+    else tr.nextElementSibling.querySelector("input").focus();
+  });
+  // Paste many rows copied from Excel / Google Sheets into the first column
+  tr.querySelector("input").onpaste = e=>{
+    const text = (e.clipboardData||window.clipboardData).getData("text");
+    if(!/[\t\n]/.test(text.trim())) return;          // single value → normal paste
+    e.preventDefault();
+    const rows = text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+    rows.forEach((line,idx)=>{
+      const cells = line.split("\t"), obj = {};
+      L.cols.forEach((c,ci)=>{ if(cells[ci]!==undefined && cells[ci]!=="") obj[c.f] = cells[ci].replace(/[₱,]/g, c.type==="number"?"":"$&").trim(); });
+      if(idx===0){ L.cols.forEach(c=>{ if(obj[c.f]!==undefined) tr.querySelector(`[data-f="${c.f}"]`).value = obj[c.f]; }); }
+      else addLine(kind, obj);
+    });
+    recalc(); toast(`${rows.length} line(s) pasted`);
+  };
+  $(L.body).appendChild(tr);
+  recalc();
+  if(!item[L.main]) tr.querySelector("input").focus();
+}
+
+
+/* =====================================================================
+   MOTORPOOL PERSONNEL ROSTER (for quick manpower selection)
+   Edit this list when staff join or leave. [section, name, position]
+   ===================================================================== */
+const ROSTER = [
+  ["Underchassis","Joenito Jacob","Chief Mechanic - Underchassis"],
+  ["Underchassis","Jae Vonne Erodias","Senior Mechanic"],
+  ["Underchassis","Roberto Cruz Jr.","Senior Mechanic"],
+  ["Underchassis","Rommil Balijado","Mechanic"],
+  ["Underchassis","Robert Benitez","Mechanic"],
+  ["Underchassis","Ric Lawrence Alday","Helper Mechanic"],
+  ["Overhauling","Aljohn Valderama","Chief Mechanic - Overhauling"],
+  ["Overhauling","Daniel Vizconde","Senior Mechanic"],
+  ["Overhauling","Ian Bautista","Mechanic"],
+  ["Overhauling","Bryan Sarmiento","Helper Mechanic"],
+  ["Overhauling","Ferdinand Atayde","Helper Mechanic"],
+  ["Overhauling","Lowe Remegio","Helper Mechanic"],
+  ["Electrical","Ruffy Maninding","Chief Auto-Electrician"],
+  ["Electrical","John Francis Celosa","Auto-Electrician"],
+  ["Electrical","Aldrin Butuhan","Auto-Electrician / Plumber"],
+  ["Electrical","Jerome Jose","Auto-Electrician / Industrial Electrician"],
+  ["Welding","Rex Naelgaz","Chief Welder"],
+  ["Welding","Jeboy Erbite","Senior Welder"],
+  ["Welding","Marlon Santos","Senior Welder"],
+  ["Welding","Arturo Jacinto","Welder"],
+  ["Machine Shop","Geram Rivera","Machinist / Welder"],
+  ["Machine Shop","Samuel Mendoza","Machinist Helper"],
+  ["Painting","Lord Bryan Solitario","Chief Painter"],
+  ["Painting","Gerrymy Tantengco","Senior Painter"],
+  ["Painting","Edver Montaya","Senior Painter"],
+  ["Painting","Gary Caparas","Helper Painter"],
+  ["Painting","Ranil Bilbao","Helper Painter"],
+  ["Painting","Emanuel Lopez","Helper Painter"],
+  ["Painting","Rey De Jose","Painter / Tinsmith"],
+  ["Aircon","Luisito Dela Cruz","Aircon Technician"],
+  ["Tire","Michael Manalang","Head Tireman"],
+  ["Tire","Mark Butuhan","Tireman / Greaseman"],
+  ["Tire","Jhoel Vicente","Tireman"],
+  ["Logistics","Albert John Dayao","Logistic Senior Mechanic"],
+  ["Logistics","Dominador Esquivel","Logistic Electrician"],
+  ["Logistics","Lorenzo Espiritu","Logistic Tireman"],
+  ["Logistics","Christian Dela Cruz","Logistic Tireman"],
+  ["Logistics","Rodel Veralde","Logistic Mechanic"],
+  ["Plant Maintenance","Gian Simon Oasan","Maintenance Engineer"],
+  ["Plant Maintenance","John Christopher Saliendra","Plant Technician"],
+  ["Motorpool Office","Kristyle Grace Cantuba","Maintenance Junior Supervisor"],
+  ["Motorpool Office","Klaire Dhane Plamenco","Maintenance Specialist / Fleet Tracker"],
+  ["Associates","Rose Ann Dulay","Motorpool Associate"],
+  ["Associates","Richard Isaac Teodoro","BBC Maintenance Associate"],
+  ["Equipment Rental","Merlyn Docabo","Equipment Rental Supervisor"],
+  ["Equipment Rental","Isabel Victoria Cruz","Level 2 Rental Associate"],
+  ["Management","Engr. Michael Rodulfo","PEMR Head"],
+  ["Management","Jose Jonel Climaco","PEMR Manager"]
+].map(([section,name,position])=>({section,name,position}));
+const rosterFind = n => ROSTER.find(r=>r.name.toLowerCase()===(n||"").trim().toLowerCase());
+
+/* Roster picker: tick several names, add them as manpower lines at once */
+function openRoster(){
+  if(!unlocked) return toast("Unlock editing first");
+  const already = new Set(readLines("pers").map(p=>p.name.toLowerCase()));
+  const groups = [...new Set(ROSTER.map(r=>r.section))];
+  $("#rosterList").innerHTML = groups.map(g=>`<fieldset class="rg"><legend>${esc(g)}
+      <button type="button" class="btn-ghost rg-all" data-g="${esc(g)}">All</button></legend>
+      ${ROSTER.filter(r=>r.section===g).map(r=>`<label class="rp" data-s="${esc((r.name+" "+r.position+" "+g).toLowerCase())}">
+        <input type="checkbox" value="${esc(r.name)}" ${already.has(r.name.toLowerCase())?"disabled checked":""}>
+        <span><b>${esc(r.name)}</b><small>${esc(r.position)}</small></span></label>`).join("")}</fieldset>`).join("");
+  document.querySelectorAll(".rg-all").forEach(b=>b.onclick=()=>{
+    const boxes=[...b.closest("fieldset").querySelectorAll("input:not(:disabled)")];
+    const on = boxes.some(x=>!x.checked); boxes.forEach(x=>x.checked=on); countRoster();
+  });
+  $("#rosterList").onchange = countRoster;
+  $("#rosterQ").value=""; filterRoster(); countRoster();
+  $("#rosterDlg").showModal(); $("#rosterQ").focus();
+}
+function filterRoster(){
+  const q=$("#rosterQ").value.trim().toLowerCase();
+  document.querySelectorAll(".rp").forEach(l=>l.style.display=!q||l.dataset.s.includes(q)?"":"none");
+  document.querySelectorAll(".rg").forEach(f=>f.style.display=[...f.querySelectorAll(".rp")].some(l=>l.style.display!=="none")?"":"none");
+}
+function countRoster(){
+  const n=document.querySelectorAll("#rosterList input:checked:not(:disabled)").length;
+  $("#rosterAdd").textContent = n ? `Add ${n} selected` : "Add selected";
+}
+function addFromRoster(){
+  const picked=[...document.querySelectorAll("#rosterList input:checked:not(:disabled)")].map(x=>rosterFind(x.value));
+  if(!picked.length) return toast("Tick at least one name");
+  // drop the empty last line if there is one, so picks don't leave a gap
+  const last=$("#persBody").lastElementChild;
+  if(last && !last.querySelector('[data-f="name"]').value.trim()) last.remove();
+  const task=$("#rosterTask").value.trim(), date=$("#rosterDate").value;
+  picked.forEach((r,i)=>{
+    const prev=lastUsed("pers",r.name)||{};
+    addLine("pers",{name:r.name,position:r.position,task:i===0?task:"",date,hours:0,rate:prev.rate??0});
+  });
+  $("#rosterDlg").close(); toast(`${picked.length} personnel added`);
+}
+
+/* Add several blank lines at once */
+function addMany(kind){
+  const n = parseInt(prompt("How many lines to add?","5"));
+  if(n>0) for(let i=0;i<Math.min(n,200);i++) addLine(kind);
+  document.querySelector(`${LINES[kind].body} tr:nth-last-child(${Math.min(n,200)}) input`)?.focus();
+}
+
+function lastUsed(kind, val){
+  const L = LINES[kind], v = (val||"").trim().toLowerCase();
+  if(!v) return null;
+  const all = [...data].sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||""));
+  for(const r of all) for(const it of (r[L.key]||[])) if((it[L.main]||"").trim().toLowerCase()===v) return it;
+  return null;
+}
+
+function readLines(kind){
+  const L = LINES[kind];
+  return [...document.querySelectorAll(`${L.body} tr`)].map(tr=>{
+    const o = {};
+    tr.querySelectorAll("input").forEach(i=>o[i.dataset.f] = i.type==="number" ? (+i.value||0) : i.value.trim());
+    o.amount = (+o[L.qty]||0) * (+o[L.rate]||0);
+    return o;
+  }).filter(o=>o[L.main]);
+}
+
+/* If a list has lines, its total drives the Parts / Labor field (read-only).
+   If the list is empty, you can still type the amount manually. */
+function recalc(){
+  const f = $("#frm");
+  for(const kind in LINES){
+    const L = LINES[kind]; let sum = 0;
+    document.querySelectorAll(`${L.body} tr`).forEach(tr=>{
+      const q = +tr.querySelector(`[data-f="${L.qty}"]`).value||0;
+      const r = +tr.querySelector(`[data-f="${L.rate}"]`).value||0;
+      tr.querySelector(".amt").textContent = peso(q*r); sum += q*r;
+    });
+    const cnt = readLines(kind).length;
+    $(L.tot).textContent = peso(sum);
+    $(L.tot).previousElementSibling.textContent = `Total ${kind==="parts"?"parts":"labor"} · ${cnt} line${cnt===1?"":"s"}`;
+    const has = readLines(kind).length>0, inp = f.elements[L.field];
+    if(has){ inp.value = sum.toFixed(2); inp.readOnly = true; $(L.hint).textContent = "· auto from list"; }
+    else   { inp.readOnly = false; $(L.hint).textContent = ""; }
+  }
+}
+$("#addParts").onclick = ()=>addLine("parts");
+$("#addPers").onclick  = ()=>addLine("pers");
+$("#addPartsMany").onclick = ()=>addMany("parts");
+$("#addPersMany").onclick  = ()=>addMany("pers");
+$("#pickRoster").onclick   = openRoster;
+$("#rosterQ").oninput      = filterRoster;
+$("#rosterAdd").onclick    = addFromRoster;
+$("#rosterCancel").onclick = ()=>$("#rosterDlg").close();
+
+/* In the main table, long lists show the first 5 then "+N more" (full list inside the JO) */
+function shortList(items, fmt){
+  if(!items.length) return "";
+  const shown = items.slice(0,5).map(fmt).join(""), more = items.length-5;
+  return `<ul class="cell-list">${shown}${more>0?`<li><i>+${more} more</i></li>`:""}</ul>`;
+}
+
+/* Short text for table cells, search and CSV */
+const partsText = r => (r.partsList||[]).map(p=>`${p.desc} ×${p.qty}${p.uom?" "+p.uom:""}`).join("; ");
+const persText  = r => (r.personnel||[]).map(p=>`${p.name}${p.position?" ("+p.position+")":""}${p.hours?" "+p.hours+"h":""}`).join("; ");
+
+/* ---------- render ---------- */
+function filtered(){
+  const q = $("#q").value.trim().toLowerCase(), c = $("#fClient").value;
+  return data.filter(r=>{
+    if(stageFilter && r.status!==stageFilter) return false;
+    if(c && r.client!==c) return false;
+    if(q && !`${r.joNo} ${r.client} ${r.plate} ${r.unit} ${r.scope} ${r.mechanic} ${r.soa} ${partsText(r)} ${persText(r)}`.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(b.joNo||"").localeCompare(a.joNo||""));
+}
+
+function render(){
+  // pipeline
+  $("#pipeline").innerHTML = STAGES.map(s=>{
+    const n = data.filter(r=>r.status===s.k).length;
+    return `<button class="stage ${stageFilter===s.k?"active":""}" data-k="${s.k}">
+      <div class="n">${n}</div><div class="l">${s.k}</div></button>`;
+  }).join("");
+  document.querySelectorAll(".stage").forEach(b=>b.onclick=()=>{
+    stageFilter = stageFilter===b.dataset.k ? "" : b.dataset.k; render();
+  });
+
+  // money strip
+  const tot = r => (+r.parts||0)+(+r.labor||0);
+  const billed = data.filter(r=>r.status==="Billed");
+  const paid   = data.filter(r=>r.status==="Paid");
+  const open   = data.filter(r=>!["Released","Billed","Paid"].includes(r.status));
+  const unbilled = data.filter(r=>["Completed","Released"].includes(r.status));
+  $("#money").innerHTML = `
+    <div><b>${open.length}</b><span>Units still in the shop</span></div>
+    <div><b>${peso(unbilled.reduce((a,r)=>a+tot(r),0))}</b><span>Done but not yet billed</span></div>
+    <div><b style="color:var(--bad)">${peso(billed.reduce((a,r)=>a+tot(r),0))}</b><span>Billed, awaiting payment</span></div>
+    <div><b style="color:var(--ok)">${peso(paid.reduce((a,r)=>a+tot(r),0))}</b><span>Collected</span></div>`;
+
+  // client filter + datalist
+  const clients = [...new Set(data.map(r=>r.client).filter(Boolean))].sort();
+  const cur = $("#fClient").value;
+  $("#fClient").innerHTML = `<option value="">All clients</option>` + clients.map(c=>`<option ${c===cur?"selected":""}>${esc(c)}</option>`).join("");
+  $("#clientList").innerHTML = clients.map(c=>`<option value="${esc(c)}">`).join("");
+  const uniq = arr => [...new Set(arr.filter(Boolean))].sort();
+  $("#partList").innerHTML  = uniq(data.flatMap(r=>(r.partsList||[]).map(p=>p.desc))).map(v=>`<option value="${esc(v)}">`).join("");
+  const rosterNames = new Set(ROSTER.map(r=>r.name.toLowerCase()));
+  $("#staffList").innerHTML = ROSTER.map(r=>`<option value="${esc(r.name)}" label="${esc(r.position)}">`).join("")
+    + uniq(data.flatMap(r=>[r.mechanic,...(r.personnel||[]).map(p=>p.name)])).filter(v=>!rosterNames.has(v.toLowerCase())).map(v=>`<option value="${esc(v)}">`).join("");
+
+  // table
+  const rows = filtered();
+  $("#rows").innerHTML = rows.length ? rows.map(r=>{
+    const st = STAGES.find(s=>s.k===r.status)||STAGES[0], d = daysIn(r);
+    return `<tr>
+      <td><b>${esc(r.joNo)}</b></td><td>${esc(r.dateIn)}</td><td>${esc(r.client)}</td>
+      <td>${esc(r.unit)}<br><small>${esc(r.plate)}</small></td><td>${esc(r.scope)}</td>
+      <td>${shortList(r.partsList||[], p=>`<li>${esc(p.desc)} ×${esc(p.qty)} ${esc(p.uom)}</li>`) || "<small>—</small>"}</td>
+      <td>${r.mechanic?`<div class="lead">${esc(r.mechanic)}</div>`:""}
+          ${shortList(r.personnel||[], p=>`<li>${esc(p.name)}${p.position?` <small>(${esc(p.position)})</small>`:""}</li>`)}</td>
+      <td><span class="pill" style="background:${st.c}22;color:${st.c}">${esc(r.status)}</span></td>
+      <td class="${d>14&&!r.dateOut?"age-bad":""}">${d}</td>
+      <td class="num">${peso(r.parts)}</td><td class="num">${peso(r.labor)}</td>
+      <td class="num"><b>${peso(tot(r))}</b></td><td>${esc(r.soa)}</td>
+      <td class="act"><button class="btn-ghost" data-id="${r.id}">${unlocked?"Edit":"View"}</button></td></tr>`;
+  }).join("") : `<tr><td colspan="14" class="empty">No job orders here yet. ${unlocked?"Click “New job order” to add one.":"Unlock editing to add the first one."}</td></tr>`;
+  document.querySelectorAll("#rows button[data-id]").forEach(b=>b.onclick=()=>openForm(b.dataset.id));
+}
+
+/* ---------- form ---------- */
+$("#statusSel").innerHTML = STAGES.map(s=>`<option>${s.k}</option>`).join("");
+function openForm(id){
+  editingId = id||null;
+  const f = $("#frm"); f.reset();
+  const r = id ? data.find(x=>x.id===id) : {joNo:nextJoNo(), dateIn:today(), status:"Received", parts:0, labor:0};
+  for(const [k,v] of Object.entries(r)) if(f.elements[k] && typeof v!=="object") f.elements[k].value = v??"";
+  $("#partsBody").innerHTML = ""; $("#persBody").innerHTML = "";
+  (r.partsList||[]).forEach(p=>addLine("parts",p));
+  (r.personnel||[]).forEach(p=>addLine("pers",p));
+  recalc();
+  $("#dlgTitle").textContent = id ? `Job order ${r.joNo}` : "New job order";
+  [...f.elements].forEach(el=>{ if(el.name!=="joNo") el.disabled = !unlocked; });
+  $("#btnSave").style.display = unlocked?"":"none";
+  $("#btnDel").style.display  = (unlocked&&id)?"":"none";
+  $("#dlg").showModal();
+}
+$("#btnSave").onclick = async ()=>{
+  const f = $("#frm");
+  if(!f.reportValidity()) return;
+  const rec = Object.fromEntries(new FormData(f).entries());
+  rec.joNo = f.elements.joNo.value;
+  recalc();
+  rec.partsList = readLines("parts");
+  rec.personnel = readLines("pers");
+  rec.parts = +f.elements.parts.value||0; rec.labor = +f.elements.labor.value||0;
+  if(editingId) rec.id = editingId; else rec.createdAt = new Date().toISOString();
+  // auto-fill dates when status moves forward
+  if(rec.status==="Completed" && !rec.dateDone) rec.dateDone = today();
+  if(rec.status==="Released"  && !rec.dateOut)  rec.dateOut  = today();
+  if(rec.status==="Paid"      && !rec.datePaid) rec.datePaid = today();
+  try{ await store.upsert(rec); $("#dlg").close(); toast(`Saved ${rec.joNo}`); }
+  catch(e){ toast("Not saved: "+e.message); }
+};
+$("#btnDel").onclick = async ()=>{
+  const r = data.find(x=>x.id===editingId);
+  if(!confirm(`Delete ${r.joNo}? This cannot be undone.`)) return;
+  await store.remove(editingId); $("#dlg").close(); toast(`Deleted ${r.joNo}`);
+};
+$("#btnCancel").onclick = ()=>$("#dlg").close();
+
+/* ---------- PIN lock ---------- */
+$("#btnLock").onclick = ()=>{
+  if(unlocked){ unlocked=false; $("#btnLock").textContent="Unlock editing"; render(); return; }
+  if(prompt("Enter PIN to edit")===EDIT_PIN){ unlocked=true; $("#btnLock").textContent="Lock editing"; render(); toast("Editing unlocked"); }
+  else toast("Wrong PIN");
+};
+$("#btnNew").onclick = ()=>{ if(!unlocked) return toast("Unlock editing first"); openForm(); };
+
+/* ---------- toolbar ---------- */
+$("#q").oninput = render; $("#fClient").onchange = render;
+$("#btnClear").onclick = ()=>{ $("#q").value=""; $("#fClient").value=""; stageFilter=""; render(); };
+/* =====================================================================
+   DETAILED PRINT: every JO with full parts + manpower breakdown
+   ===================================================================== */
+/* Group consecutive personnel rows that share the same task.
+   A blank task under a filled one counts as the same (combined) task. */
+function taskGroups(pers){
+  const groups = [];
+  pers.forEach(p=>{
+    const t = (p.task||"").trim(), g = groups[groups.length-1];
+    if(g && (t==="" || t.toLowerCase()===g.task.toLowerCase())) g.items.push(p);
+    else groups.push({task:t, items:[p]});
+  });
+  return groups;
+}
+function joBlock(r){
+  const parts = r.partsList||[], pers = r.personnel||[];
+  const pTot = parts.length ? parts.reduce((a,p)=>a+(+p.qty||0)*(+p.cost||0),0) : (+r.parts||0);
+  const lTot = pers.length  ? pers.reduce((a,p)=>a+(+p.hours||0)*(+p.rate||0),0) : (+r.labor||0);
+  const partRows = parts.length
+    ? parts.map((p,i)=>`<tr><td>${i+1}</td><td>${esc(p.desc)}</td><td>${esc(p.partNo)}</td>
+        <td class="num">${esc(p.qty)}</td><td>${esc(p.uom)}</td><td class="num">${peso(p.cost)}</td>
+        <td>${esc(p.source)}</td><td class="num">${peso((+p.qty||0)*(+p.cost||0))}</td></tr>`).join("")
+    : `<tr><td>1</td><td colspan="6"><i>${pTot?"Parts (lump sum, no itemized list)":"No parts used"}</i></td><td class="num">${peso(pTot)}</td></tr>`;
+  let n = 0;
+  const persRows = pers.length
+    ? taskGroups(pers).map(g=>{
+        // Same task (or blank task under it) = combined work → one merged Task cell
+        const dates = [...new Set(g.items.map(p=>p.date).filter(Boolean))], oneDate = dates.length<=1, rs = g.items.length;
+        return g.items.map((p,i)=>`<tr><td>${++n}</td><td>${esc(p.name)}</td><td>${esc(p.position)}</td>
+          ${i===0?`<td rowspan="${rs}" class="mg">${esc(g.task)}</td>`:""}
+          ${oneDate?(i===0?`<td rowspan="${rs}" class="mg">${esc(dates[0]||"")}</td>`:""):`<td>${esc(p.date)}</td>`}
+          <td class="num">${esc(p.hours)}</td><td class="num">${peso(p.rate)}</td>
+          <td class="num">${peso((+p.hours||0)*(+p.rate||0))}</td></tr>`).join("");
+      }).join("")
+    : `<tr><td>1</td><td colspan="6"><i>${lTot?"Labor (lump sum, no itemized manpower)":"No manpower recorded"}</i></td><td class="num">${peso(lTot)}</td></tr>`;
+  const qtyTot = parts.reduce((a,p)=>a+(+p.qty||0),0), hrTot = pers.reduce((a,p)=>a+(+p.hours||0),0);
+  return `<div class="jo">
+    <div class="jo-h"><span>${esc(r.joNo)} · ${esc(r.client)}</span><span>${esc(r.status)}</span></div>
+    <div class="jo-info">
+      <div class="w2"><b>Unit / Plate:</b>${esc(r.unit)} ${r.plate?"· "+esc(r.plate):""}</div>
+      <div><b>Contact:</b>${esc(r.contact)||"—"}</div>
+      <div><b>Lead mechanic / foreman:</b>${esc(r.mechanic)||"—"}</div>
+      <div><b>Date received:</b>${esc(r.dateIn)||"—"}</div>
+      <div><b>Date completed:</b>${esc(r.dateDone)||"—"}</div>
+      <div><b>Date released:</b>${esc(r.dateOut)||"—"}</div>
+      <div><b>Days in shop · SOA no.:</b>${daysIn(r)} · ${esc(r.soa)||"—"}</div>
+      <div class="w4"><b>Complaint / scope of work:</b>${esc(r.scope)||"—"}</div>
+      ${r.remarks?`<div class="w4"><b>Remarks:</b>${esc(r.remarks)}</div>`:""}
+    </div>
+    <div class="jo-sec"><h4>A. Parts utilized</h4>
+      <table class="pt"><thead><tr><th>#</th><th>Description</th><th>Part no.</th><th>Qty</th><th>Unit</th><th>Unit cost</th><th>Source / PR</th><th>Amount</th></tr></thead>
+      <tbody>${partRows}</tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right">Total parts</td><td class="num">${parts.length?qtyTot:""}</td><td colspan="3"></td><td class="num">${peso(pTot)}</td></tr></tfoot></table>
+    </div>
+    <div class="jo-sec"><h4>B. Manpower / labor</h4>
+      <table class="pt"><thead><tr><th>#</th><th>Name</th><th>Position</th><th>Task done</th><th>Date</th><th>Hours</th><th>Rate/hr</th><th>Amount</th></tr></thead>
+      <tbody>${persRows}</tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right">Total labor</td><td class="num">${pers.length?hrTot:""}</td><td></td><td class="num">${peso(lTot)}</td></tr></tfoot></table>
+    </div>
+    <div class="gt"><span>A. Parts: <b>${peso(pTot)}</b></span><span>B. Labor: <b>${peso(lTot)}</b></span><span>TOTAL (A+B): <b>${peso(pTot+lTot)}</b></span></div>
+  </div>`;
+}
+
+function buildPrint(list, single){
+  const now = new Date().toLocaleString("en-PH",{dateStyle:"long",timeStyle:"short"});
+  const filt = [stageFilter&&`Status: ${stageFilter}`, $("#fClient").value&&`Client: ${$("#fClient").value}`, $("#q").value&&`Search: "${$("#q").value}"`].filter(Boolean).join(" · ");
+  const tot = r => (+r.parts||0)+(+r.labor||0);
+  const head = `<div class="ph"><div class="co">BIGBEN GROUP OF COMPANIES · PEMR Motorpool Division</div>
+    <div class="t">${single?"Job Order Repair Report":"External Client Repairs – Detailed Report"}</div>
+    <small>National Road Dampol 1st, Pulilan, Bulacan · Printed ${esc(now)}${!single&&filt?" · "+esc(filt):""}</small></div>`;
+  /* Page-1 summary table removed per request; each JO prints as its own detailed block */
+  // Client name shows on the line if the printout covers only one client
+  const clients = [...new Set(list.map(r=>r.client).filter(Boolean))];
+  const clientName = clients.length===1 ? esc(clients[0]) : "";
+  const sig = (label, who) => `<div><span class="sl">${label}</span><div class="sline"></div>
+      <b>${who||"&nbsp;"}</b><br><small>Signature over printed name &amp; date</small></div>`;
+  const conforme = `<div class="conf ${single?"c3":"c2"}">
+      ${single ? sig("Released by:", "") : ""}
+      ${sig("Received and acknowledged by:", clientName ? clientName+"<br><small>(Client)</small>" : "Client")}
+      ${sig("Received by:", "Accounting Department")}
+    </div>`;
+  $("#printArea").innerHTML = head + list.map(joBlock).join("");
+  $("#printAck").innerHTML = conforme;
+}
+
+/* Measure the printout at A4 printable size (194 × 281 mm). If it overflows
+   by up to ~45%, shrink it so everything incl. signatories stays on page 1. */
+function fitToPage(){
+  // Text stays at 12pt minimum, so no shrinking. Long JOs continue on page 2;
+  // the whole signatory block always stays together.
+  document.documentElement.style.setProperty("--fit", 1);
+  return 1;
+}
+window.addEventListener("afterprint", ()=>document.documentElement.style.setProperty("--fit",1));
+
+$("#btnImport").onclick = importPastBillings;
+$("#btnPrint").onclick = ()=>{
+  const list = filtered();
+  if(!list.length) return toast("No job orders to print");
+  buildPrint(list,false); fitToPage(); window.print();
+};
+$("#btnPrintOne").onclick = ()=>{
+  const f = $("#frm");
+  // print what is on screen (includes unsaved edits)
+  const r = {};
+  [...f.elements].forEach(el=>{ if(el.name) r[el.name] = el.value; }); r.partsList = readLines("parts"); r.personnel = readLines("pers");
+  r.parts = +f.elements.parts.value||0; r.labor = +f.elements.labor.value||0;
+  $("#dlg").close(); buildPrint([r],true); fitToPage(); window.print();
+};
+$("#btnCsv").onclick = ()=>{
+  const cols = ["joNo","dateIn","client","contact","unit","plate","scope","mechanic","status","parts","labor","dateDone","dateOut","soa","datePaid","remarks"];
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const csv = [cols.concat(["partsUtilized","assignedPersonnel"]).join(",")]
+    .concat(filtered().map(r=>cols.map(c=>q(r[c])).concat([q(partsText(r)),q(persText(r))]).join(","))).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv"}));
+  a.download = `external-repairs-${today()}.csv`; a.click();
+};
+
+store.init();
+</script>
+</body>
+</html>
