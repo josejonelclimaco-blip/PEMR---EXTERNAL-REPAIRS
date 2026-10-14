@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMR Motorpool Job Monitoring</title>
+<style>
+:root{
+  --maroon:#7A1F2B; --maroon-d:#5c1620; --gold:#C9A227; --gold-l:#F3E9CE;
+  --ink:#1d1d1f; --muted:#6b6b70; --line:#e2dfda; --bg:#f6f5f3; --panel:#fff;
+  --ok:#2e7d32; --warn:#b26a00; --bad:#c62828; --info:#1565c0;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+header{background:var(--maroon);color:#fff;border-bottom:4px solid var(--gold);padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{width:42px;height:42px;border-radius:8px;background:var(--gold);color:var(--maroon);font-weight:800;display:grid;place-items:center;font-size:17px}
+header h1{font-size:19px;margin:0}
+header p{margin:2px 0 0;font-size:12px;opacity:.85}
+.hdr-right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.conn{display:flex;align-items:center;gap:6px;font-size:12px;background:rgba(255,255,255,.12);padding:6px 10px;border-radius:999px}
+.conn .dot{width:8px;height:8px;border-radius:50%;background:#999}
+.conn.live .dot{background:#6ee07a}.conn.off .dot{background:var(--gold)}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid transparent;padding:8px 14px}
+.btn-maroon{background:var(--maroon);color:#fff}.btn-maroon:hover{background:var(--maroon-d)}
+.btn-gold{background:var(--gold);color:var(--maroon);font-weight:700}
+.btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)}
+.btn-ghost:hover{border-color:var(--maroon)}
+header .btn-ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+main{padding:20px 22px 40px;max-width:1600px;margin:0 auto}
+
+/* workflow strip: the stages a unit moves through */
+.flow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;margin-bottom:18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stage{position:relative;padding:12px 14px 12px 22px;border:0;border-radius:0;background:transparent;text-align:left;color:var(--ink);border-right:1px solid var(--line)}
+.stage:last-child{border-right:0}
+.stage .n{font-size:26px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.stage .l{font-size:12px;color:var(--muted);margin-top:2px}
+.stage::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--c)}
+.stage.on{background:var(--gold-l)}
+.stage:hover{background:#faf6ea}
+
+.row2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;margin-bottom:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h2{margin:0 0 4px;font-size:15px;color:var(--maroon)}
+.card .note{margin:0 0 12px;font-size:12px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat{border-left:4px solid var(--gold);padding:6px 12px;background:#fcfbf8}
+.stat .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat.bad{border-left-color:var(--bad)}.stat.bad .v{color:var(--bad)}
+
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#faf8f4;color:var(--maroon);font-size:12px;white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.tot td{font-weight:700;background:var(--gold-l)}
+
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.filters input,.filters select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.filters input[type=search]{flex:1 1 240px}
+.filters label{font-size:13px;display:flex;align-items:center;gap:6px;color:var(--muted)}
+.count{font-size:12px;color:var(--muted);margin-left:auto}
+.tbl-wrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
+.tbl-wrap th{position:sticky;top:0;z-index:1;cursor:pointer;user-select:none}
+.tbl-wrap th[aria-sort=ascending]::after{content:" ▲";font-size:9px}
+.tbl-wrap th[aria-sort=descending]::after{content:" ▼";font-size:9px}
+#jobBody tr{cursor:pointer}
+#jobBody tr:hover td{background:#fbf7ec}
+td.unit{font-weight:700;min-width:150px}
+td.wide{min-width:200px}
+td.date{white-space:nowrap}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:var(--c);white-space:nowrap}
+.days{font-weight:700}.days.old{color:var(--bad)}
+.blank{color:#bbb}
+.pri-High{color:var(--bad);font-weight:700}
+
+dialog{border:0;border-radius:12px;padding:0;width:min(920px,96vw);max-height:92vh;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(30,10,14,.45)}
+.dlg-h{background:var(--maroon);color:#fff;padding:14px 20px;font-weight:700;border-bottom:3px solid var(--gold);display:flex;justify-content:space-between;align-items:center}
+.dlg-b{padding:16px 20px;overflow:auto;max-height:calc(92vh - 130px)}
+.dlg-f{display:flex;gap:8px;padding:12px 20px;border-top:1px solid var(--line);background:#faf8f4}
+fieldset{border:1px solid var(--line);border-radius:8px;padding:10px 14px 14px;margin:0 0 12px}
+legend{font-size:12px;font-weight:700;color:var(--maroon);padding:0 6px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.grid label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:4px}
+.grid .s2{grid-column:span 2}.grid .s4{grid-column:1/-1}
+.grid input,.grid select,.grid textarea{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:#fff}
+.grid input[readonly]{background:#f3f2ef}
+.hist{font-size:12px;color:var(--muted);margin:0;padding-left:18px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.locked-hint{font-size:12px;color:var(--muted)}
+#printArea{display:none}
+.mp{display:flex;flex-direction:column;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--gold-l);border:1px solid #e5d49d;color:var(--ink);border-radius:999px;padding:3px 4px 3px 10px;font-size:12px}
+.chip small{color:var(--muted)}
+.chip button{border:0;background:transparent;padding:0 6px;font-size:14px;line-height:1;color:var(--maroon)}
+.chip.ro{padding-right:10px}
+.load{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 18px}
+.load div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:5px 0;font-size:13px}
+.load .who small{display:block;color:var(--muted);font-size:11px}
+.load b{font-variant-numeric:tabular-nums}
+
+@media(max-width:1000px){.flow{grid-template-columns:repeat(4,1fr)}.stage{border-bottom:1px solid var(--line)}.row2{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.flow{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.grid .s2{grid-column:auto}}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
+
+@media print{
+  @page{size:A4 landscape;margin:12mm}
+  body{background:#fff;font-size:12pt}
+  header,main,.toast,dialog{display:none!important}
+  #printArea{display:block}
+  #printArea h1{font-size:15pt;margin:0;color:var(--maroon)}
+  #printArea .sub{font-size:11pt;color:#444;margin:2px 0 10px}
+  #printArea h3{font-size:12pt;margin:12px 0 4px;color:var(--maroon)}
+  #printArea table{font-size:10.5pt}
+  #printArea th{background:var(--gold-l)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #printArea tr{break-inside:avoid}
+  .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:28px;break-inside:avoid;font-size:12pt}
+  .sig .ln{border-top:1px solid #000;margin-top:34px;padding-top:4px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">BB</div>
+  <div>
+    <h1>EMR Motorpool Job Monitoring</h1>
+    <p>Bigben Group of Companies · Motorpool Division · Dampol 1st, Pulilan, Bulacan</p>
+  </div>
+  <div class="hdr-right">
+    <span class="conn" id="conn"><span class="dot"></span><span id="connTxt">Connecting…</span></span>
+    <button class="btn-ghost" id="btnLock">Unlock editing</button>
+  </div>
+</header>
+
+<main>
+  <section class="flow" id="flow" aria-label="Jobs by status"></section>
+
+  <section class="row2">
+    <div class="card">
+      <h2>Open jobs by location</h2>
+      <p class="note">Released and finished units are not counted.</p>
+      <div style="overflow-x:auto"><table id="sumTbl"></table></div>
+    </div>
+    <div class="card">
+      <h2>Monitoring</h2>
+      <p class="note">Days are counted from date of entry to release, or to today.</p>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-bottom:18px">
+    <h2>Open jobs per technician</h2>
+    <p class="note" id="loadNote">Counts open jobs where the person is listed under Manpower.</p>
+    <div class="load" id="load"></div>
+  </section>
+
+  <section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <h2>Job orders</h2>
+        <p class="note" style="margin:0">Click a row to view or edit it. Click a header to sort.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-maroon" id="btnNew">Add job</button>
+        <button class="btn-ghost" id="btnPrint">Print report</button>
+        <button class="btn-ghost" id="btnCsv">Export CSV</button>
+        <button class="btn-gold" id="btnSeed" hidden>Load 14 Oct list</button>
+      </div>
+    </div>
+    <div class="filters">
+      <input type="search" id="q" placeholder="Search unit, job, part, manpower, remarks" aria-label="Search">
+      <select id="fBu" aria-label="Business unit"></select>
+      <select id="fLoc" aria-label="Location"></select>
+      <select id="fSec" aria-label="Section"></select>
+      <select id="fMp" aria-label="Manpower"></select>
+      <label><input type="checkbox" id="fDone"> Show released</label>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr id="jobHead"></tr></thead>
+        <tbody id="jobBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg-h"><span id="dlgTitle">Add job</span><span id="dlgRef" style="font-weight:400;font-size:13px"></span></div>
+  <div class="dlg-b">
+    <fieldset><legend>Unit and job</legend>
+      <div class="grid">
+        <label>Business unit<input id="business_unit" list="buList" placeholder="BBC, RMC, SCM, AP…"></label>
+        <label class="s2">Unit description<input id="unit" placeholder="e.g. NEP-5320 Howo Boom Truck"></label>
+        <label>Priority<select id="priority"><option>Normal</option><option>High</option><option>Low</option></select></label>
+        <label>Location<select id="location"><option>Inside Motorpool</option><option>Front Parking</option><option>Project Site</option></select></label>
+        <label>Site<input id="site" list="siteList" placeholder="Pulilan Motorpool"></label>
+        <label>Section<input id="section" list="secList"></label>
+        <label>Status<select id="status"></select></label>
+        <label class="s4">Job request<textarea id="job_request" rows="2"></textarea></label>
+        <label>Job order no.<input id="job_order"></label>
+        <div class="s2" style="display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:4px"><span>Manpower (assigned)</span><div class="mp"><div class="chips" id="mpChips"></div><select id="mpPick" aria-label="Add manpower"></select></div><input type="hidden" id="manpower"></div>
+        <label>Date started<input type="date" id="date_started"></label>
+      </div>
+    </fieldset>
+    <fieldset><legend>Entry</legend>
+      <div class="grid">
+        <label>Date of entry<input type="date" id="date_entry"></label>
+        <label>Time in<input type="time" id="time_in"></label>
+      </div>
+    </fieldset>
+    <fieldset><legend>Parts</legend>
+      <div class="grid">
+        <label class="s2">Parts needed<input id="parts_needed" placeholder="Part name, part no."></label>
+        <label>Qty<input type="number" min="0" step="1" id="part_qty"></label>
+        <label>Unit price (₱)<input type="number" min="0" step="0.01" id="part_price_php"></label>
+        <label class="s2">Supplier<input id="supplier"></label>
+        <label>PR / PO no.<input id="pr_no"></label>
+        <label>Date part requested<input type="date" id="date_part_requested"></label>
+        <label>Date part arrived<input type="date" id="date_part_arrived"></label>
+      </div>
+    </fieldset>
+    <fieldset><legend>Completion</legend>
+      <div class="grid">
+        <label>Date finished<input type="date" id="date_finished"></label>
+        <label>Time finished<input type="time" id="time_finished"></label>
+        <label>Date released<input type="date" id="date_released"></label>
+        <label>Time released<input type="time" id="time_released"></label>
+        <label class="s4">Remarks<textarea id="remarks" rows="2"></textarea></label>
+      </div>
+    </fieldset>
+    <fieldset id="histBox" hidden><legend>Status history</legend><ul class="hist" id="hist"></ul></fieldset>
+  </div>
+  <div class="dlg-f">
+    <button class="btn-ghost" id="btnDel" style="margin-right:auto;color:var(--bad)">Delete job</button>
+    <span class="locked-hint" id="lockedHint" hidden>Unlock editing to make changes.</span>
+    <button class="btn-ghost" id="btnCancel">Close</button>
+    <button class="btn-maroon" id="btnSave">Save job</button>
+  </div>
+</dialog>
+
+<datalist id="buList"></datalist><datalist id="siteList"></datalist><datalist id="secList"></datalist>
+<div class="toast" id="toast" role="status"></div>
+<div id="printArea"></div>
+
+<script>
+/* =====================================================================
+   Paste your Firebase config here (Project settings > Your apps).
+   Leave apiKey empty to run in Offline mode (saves to this browser only).
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyB_9CwYHMCUpPlSMT3ES6WlPcFr1EE8UaY",
+  authDomain: "pemr---external-repairs.firebaseapp.com",
+  projectId: "pemr---external-repairs",
+  storageBucket: "pemr---external-repairs.firebasestorage.app",
+  messagingSenderId: "441751082916",
+  appId: "1:441751082916:web:719eae108b3df0d1bd5331",
+  measurementId: "G-9YFQ5XDH3X"
+};
+const COLLECTION = "motorpoolJobs";   // Firestore collection name
+const EDIT_PIN   = "EMR6767";         // PIN to unlock editing
+const OLD_DAYS   = 14;                // days open before a job turns red
+
+/* Status order follows how a unit moves through the shop. */
+const STATUSES = [
+  {k:"Pending",              c:"#6b6b70"},
+  {k:"Waiting for Parts",    c:"#b26a00"},
+  {k:"Waiting for Manpower", c:"#d4880f"},
+  {k:"Ongoing",              c:"#1565c0"},
+  {k:"For Testing",          c:"#6a4c93"},
+  {k:"Finished",             c:"#2e7d32"},
+  {k:"Released",             c:"#7A1F2B"}
+];
+const CLOSED = new Set(["Finished","Released"]);
+const LOCATIONS = ["Inside Motorpool","Front Parking","Project Site"];
+const SECTIONS = ["Overhauling","Underchassis","Machine Shop & Fabrication","Painting","Auto-Electrical","Aircon","Tireman"];
+/* Motorpool personnel roster. Edit here when people join, leave or move sections. */
+const PERSONNEL = [
+  {n:"Joenito Jacob",            p:"Chief Mechanic - Underchassis",           g:"Underchassis"},
+  {n:"Jae Vonne Erodias",        p:"Senior Mechanic",                         g:"Underchassis"},
+  {n:"Roberto Cruz Jr.",         p:"Senior Mechanic",                         g:"Underchassis"},
+  {n:"Rommil Balijado",          p:"Mechanic",                                g:"Underchassis"},
+  {n:"Robert Benitez",           p:"Mechanic",                                g:"Underchassis"},
+  {n:"Ric Lawrence Alday",       p:"Helper Mechanic",                         g:"Underchassis"},
+  {n:"Aljohn Valderama",         p:"Chief Mechanic - Overhauling",            g:"Overhauling"},
+  {n:"Daniel Vizconde",          p:"Senior Mechanic",                         g:"Overhauling"},
+  {n:"Ian Bautista",             p:"Mechanic",                                g:"Overhauling"},
+  {n:"Bryan Sarmiento",          p:"Helper Mechanic",                         g:"Overhauling"},
+  {n:"Ferdinand Atayde",         p:"Helper Mechanic",                         g:"Overhauling"},
+  {n:"Lowe Remegio",             p:"Helper Mechanic",                         g:"Overhauling"},
+  {n:"Ruffy Maninding",          p:"Chief Auto-Electrician",                  g:"Auto-Electrical"},
+  {n:"John Francis Celosa",      p:"Auto-Electrician",                        g:"Auto-Electrical"},
+  {n:"Aldrin Butuhan",           p:"Auto-Electrician / Plumber",              g:"Auto-Electrical"},
+  {n:"Jerome Jose",              p:"Auto-Electrician / Industrial Electrician", g:"Auto-Electrical"},
+  {n:"Rex Naelgaz",              p:"Chief Welder",                            g:"Machine Shop & Fabrication"},
+  {n:"Jeboy Erbite",             p:"Senior Welder",                           g:"Machine Shop & Fabrication"},
+  {n:"Marlon Santos",            p:"Senior Welder",                           g:"Machine Shop & Fabrication"},
+  {n:"Arturo Jacinto",           p:"Welder",                                  g:"Machine Shop & Fabrication"},
+  {n:"Geram Rivera",             p:"Machinist / Welder",                      g:"Machine Shop & Fabrication"},
+  {n:"Samuel Mendoza",           p:"Machinist Helper",                        g:"Machine Shop & Fabrication"},
+  {n:"Lord Bryan Solitario",     p:"Chief Painter",                           g:"Painting"},
+  {n:"Gerrymy Tantengco",        p:"Senior Painter",                          g:"Painting"},
+  {n:"Edver Montaya",            p:"Senior Painter",                          g:"Painting"},
+  {n:"Gary Caparas",             p:"Helper Painter",                          g:"Painting"},
+  {n:"Ranil Bilbao",             p:"Helper Painter",                          g:"Painting"},
+  {n:"Emanuel Lopez",            p:"Helper Painter",                          g:"Painting"},
+  {n:"Rey De Jose",              p:"Painter / Tinsmith",                      g:"Painting"},
+  {n:"Luisito Dela Cruz",        p:"Aircon Technician",                       g:"Aircon"},
+  {n:"Michael Manalang",         p:"Head Tireman",                            g:"Tireman"},
+  {n:"Mark Butuhan",             p:"Tireman / Greaseman",                     g:"Tireman"},
+  {n:"Jhoel Vicente",            p:"Tireman",                                 g:"Tireman"},
+  {n:"Albert John Dayao",        p:"Logistic Senior Mechanic",                g:"Logistics"},
+  {n:"Dominador Esquivel",       p:"Logistic Electrician",                    g:"Logistics"},
+  {n:"Lorenzo Espiritu",         p:"Logistic Tireman",                        g:"Logistics"},
+  {n:"Christian Dela Cruz",      p:"Logistic Tireman",                        g:"Logistics"},
+  {n:"Rodel Veralde",            p:"Logistic Mechanic",                       g:"Logistics"},
+  {n:"Gian Simon Oasan",         p:"Maintenance Engineer",                    g:"Plant Maintenance"},
+  {n:"John Christopher Saliendra", p:"Plant Technician",                      g:"Plant Maintenance"},
+  {n:"Kristyle Grace Cantuba",   p:"Maintenance Junior Supervisor",           g:"Motorpool Office"},
+  {n:"Klaire Dhane Plamenco",    p:"Maintenance Specialist / Fleet Tracker",  g:"Motorpool Office"},
+  {n:"Rose Ann Dulay",           p:"Motorpool Associate",                     g:"Motorpool Office"},
+  {n:"Richard Isaac Teodoro",    p:"BBC Maintenance Associate",               g:"Motorpool Office"},
+  {n:"Merlyn Docabo",            p:"Equipment Rental Supervisor",             g:"Equipment Rental"},
+  {n:"Isabel Victoria Cruz",     p:"Level 2 Rental Associate",                g:"Equipment Rental"},
+  {n:"Jose Jonel Climaco",       p:"PEMR Manager",                            g:"PEMR Management"},
+  {n:"Engr. Michael Rodulfo",    p:"PEMR Head",                               g:"PEMR Management"}
+];
+const PERSON_GROUPS = [...new Set(PERSONNEL.map((x) => x.g))];
+const TECH_GROUPS = ["Underchassis","Overhauling","Auto-Electrical","Machine Shop & Fabrication","Painting","Aircon","Tireman","Logistics","Plant Maintenance"];
+const splitNames = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolean);
+const FIELDS = ["ref","status","priority","location","site","business_unit","unit","section","job_request","job_order","manpower","date_entry","time_in","date_started","parts_needed","part_qty","part_price_php","supplier","pr_no","date_part_requested","date_part_arrived","date_finished","time_finished","date_released","time_released","remarks"];
+
+/* Status as of 14 Oct 2026, loaded once with the "Load 14 Oct list" button. */
+const SEED = [{"ref": "EMR-001", "status": "Ongoing", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "BBC", "unit": "ZGW-915 Isuzu D-Max", "section": "Painting", "job_request": "Painting", "job_order": null, "manpower": null, "date_entry": "2026-09-25", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-002", "status": "Ongoing", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "AP", "unit": "DT42", "section": "Auto-Electrical", "job_request": "Speed sensor connection checking", "job_order": null, "manpower": null, "date_entry": "2026-10-12", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-003", "status": "Ongoing", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "SCM", "unit": "D-Trailer #02", "section": "Machine Shop & Fabrication / Underchassis", "job_request": "Leaf spring holder, bushing and pin replacement", "job_order": null, "manpower": null, "date_entry": "2026-10-10", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "1 of 4 done, 3 ongoing"}, {"ref": "EMR-004", "status": "Ongoing", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "BBC", "unit": "NEP-5320 Howo Boom Truck", "section": "Underchassis", "job_request": "Clutch system slipping: checking & repair", "job_order": null, "manpower": null, "date_entry": "2026-10-13", "time_in": null, "parts_needed": "Relief valve at suction valve (requested)", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Moved in from front parking 13 Oct; Underchassis checks clutch first"}, {"ref": "EMR-005", "status": "Waiting for Manpower", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "RMC", "unit": "Sany Boom 37 Pumpcrete", "section": null, "job_request": "Hydraulic system repair", "job_order": null, "manpower": null, "date_entry": "2026-09-16", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Parts available"}, {"ref": "EMR-006", "status": "Waiting for Manpower", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "Feedmix (external)", "unit": "NHA-4929 UD TH #21", "section": "Aircon", "job_request": "Evaporator installation", "job_order": null, "manpower": null, "date_entry": "2026-09-26", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Parts available; waiting for aircon technician"}, {"ref": "EMR-007", "status": "Waiting for Manpower", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "Feedmix (external)", "unit": "NID-4894 UD TH #14", "section": null, "job_request": "Pneumatic system repair", "job_order": null, "manpower": null, "date_entry": "2026-10-05", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Temporarily stopped due to priority jobs"}, {"ref": "EMR-008", "status": "Waiting for Manpower", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "BBC", "unit": "Howo DT05", "section": "Aircon", "job_request": "Aircon compressor installation", "job_order": null, "manpower": null, "date_entry": "2026-10-05", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Parts available; waiting for technician"}, {"ref": "EMR-009", "status": "Waiting for Manpower", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": null, "unit": "1409C Line Pump", "section": null, "job_request": "Hydraulic system repair", "job_order": null, "manpower": null, "date_entry": "2026-10-05", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Parts available; owner to confirm"}, {"ref": "EMR-010", "status": "Waiting for Manpower", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "RMC", "unit": "NGB-1366 Toyota Wigo", "section": null, "job_request": "Engine & transmission support installation", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Parts available; entry date to confirm"}, {"ref": "EMR-011", "status": "Waiting for Parts", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "BBC", "unit": "R170 Hyundai Excavator", "section": null, "job_request": "Radiator replacement", "job_order": null, "manpower": null, "date_entry": "2026-09-26", "time_in": null, "parts_needed": "Radiator assembly", "date_part_requested": "2026-09-26", "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-012", "status": "Waiting for Parts", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "RMC", "unit": "Sinotruk #05", "section": null, "job_request": "Alternator belt replacement", "job_order": null, "manpower": null, "date_entry": "2026-09-29", "time_in": null, "parts_needed": "Alternator belt", "date_part_requested": "2026-09-29", "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-013", "status": "Waiting for Parts", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": null, "unit": "Sany Line Pump", "section": null, "job_request": "Hydraulic system repair", "job_order": null, "manpower": null, "date_entry": "2026-10-05", "time_in": null, "parts_needed": "Hydraulic parts (for request)", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Parts not yet requested; needs manpower after parts"}, {"ref": "EMR-014", "status": "Waiting for Parts", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": null, "unit": "Kubota Farm Tractor #14", "section": "Tireman", "job_request": "Tire & rim replacement", "job_order": null, "manpower": null, "date_entry": "2026-10-12", "time_in": null, "parts_needed": "Tire & rim", "date_part_requested": "2026-10-12", "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-015", "status": "Pending", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": null, "unit": "75 KVA New Frontier Generator #02", "section": null, "job_request": "Stator rewind", "job_order": null, "manpower": null, "date_entry": "2026-10-12", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-016", "status": "Pending", "location": "Front Parking", "site": "Pulilan Motorpool", "business_unit": "AP", "unit": "DT33", "section": "Aircon", "job_request": "Aircon job request", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-017", "status": "Pending", "location": "Front Parking", "site": "Pulilan Motorpool", "business_unit": "AP", "unit": "DT36", "section": "Aircon", "job_request": "Aircon job request", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-018", "status": "For Testing", "location": "Front Parking", "site": "Pulilan Motorpool", "business_unit": "BBC", "unit": "Sinotruk #12", "section": null, "job_request": "Post-repair testing", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-019", "status": "Waiting for Parts", "location": "Project Site", "site": "Daiichi Tanauan", "business_unit": "BBC", "unit": "Case Skid Loader", "section": null, "job_request": "Transmission oil seal replacement", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": "Transmission oil seal at starter (requested)", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-020", "status": "Waiting for Parts", "location": "Project Site", "site": "Malolos Project", "business_unit": "BBC", "unit": "XCMG #11 Wheel Loader", "section": null, "job_request": "Propeller shaft repair", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": "Propeller shaft cross joint (requested)", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-021", "status": "Waiting for Parts", "location": "Project Site", "site": "Malolos Project", "business_unit": "BBC", "unit": "D4C #03 Bulldozer", "section": null, "job_request": "Alternator replacement", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": "Alternator assembly (requested)", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-022", "status": "Ongoing", "location": "Project Site", "site": "Malolos Robinson", "business_unit": null, "unit": "Tower Crane #03", "section": null, "job_request": "Dismantling", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": "Dismantling starts with unit #03"}, {"ref": "EMR-023", "status": "Pending", "location": "Project Site", "site": "Bongabon Quarry", "business_unit": null, "unit": "SDLG #31 Excavator", "section": null, "job_request": "Engine PMS; swing arm concern", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-024", "status": "Waiting for Parts", "location": "Project Site", "site": "Calamba 3B", "business_unit": null, "unit": "Sany Truck-Mounted Crane #02", "section": null, "job_request": "Height limit switch replacement", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": "Height limit switch 60359944, P/N 142599000047A", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": "Topspot Heavy Equipment Inc.", "part_price_php": 12183.44, "remarks": "Quotation signed; qty and delivery date to confirm"}, {"ref": "EMR-025", "status": "Waiting for Parts", "location": "Project Site", "site": "Calamba 3B", "business_unit": null, "unit": "Sany Truck-Mounted Crane #03", "section": null, "job_request": "Pressure sensor replacement", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": "Pressure sensor, P/N 140502000186A", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": "Topspot Heavy Equipment Inc.", "part_price_php": 6262.36, "remarks": "Quotation signed; qty and delivery date to confirm"}, {"ref": "EMR-026", "status": "Waiting for Parts", "location": "Project Site", "site": "Calamba 3B", "business_unit": null, "unit": "Case Compactor", "section": null, "job_request": "Starter motor replacement", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": "Starter motor (requested)", "date_part_requested": null, "date_part_arrived": null, "date_finished": null, "time_finished": null, "date_released": null, "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-027", "status": "Released", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "RMC", "unit": "TM28", "section": "Underchassis", "job_request": "Brake lining replacement", "job_order": null, "manpower": null, "date_entry": "2026-10-12", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": "2026-10-13", "time_finished": null, "date_released": "2026-10-13", "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-028", "status": "Released", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "BBC", "unit": "NFV-4217 Mitsubishi Strada", "section": "Aircon", "job_request": "Aircon: loss of freon, tightening of connections and monitoring", "job_order": null, "manpower": null, "date_entry": "2026-10-12", "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": "2026-10-13", "time_finished": null, "date_released": "2026-10-13", "supplier": null, "part_price_php": null, "remarks": null}, {"ref": "EMR-029", "status": "Released", "location": "Inside Motorpool", "site": "Pulilan Motorpool", "business_unit": "AP", "unit": "Howo Self Loading #05", "section": "Overhauling", "job_request": "Engine & electrical PMS", "job_order": null, "manpower": null, "date_entry": null, "time_in": null, "parts_needed": null, "date_part_requested": null, "date_part_arrived": null, "date_finished": "2026-10-12", "time_finished": "17:00", "date_released": "2026-10-13", "supplier": null, "part_price_php": null, "remarks": "Back to operation; entry date to confirm"}];
+
+/* ---------- state ---------- */
+let data = [], unlocked = false, statusFilter = "", editingRef = null, db = null;
+let sortKey = "days", sortDir = -1;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = (n) => String(n).padStart(2, "0");
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const nowTime = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = (s) => { if (!s) return ""; const [y,m,d] = s.split("-"); return `${Number(d)} ${MONTHS[Number(m)-1]}`; };
+const fmtTime = (t) => { if (!t) return ""; let [h,m] = t.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return `${h}:${pad(m)} ${ap}`; };
+const peso = (n) => n == null || n === "" ? "" : "₱" + Number(n).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const statusColor = (k) => (STATUSES.find((s) => s.k === k) || {c:"#999"}).c;
+const dayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+const daysOpen = (j) => j.date_entry ? dayDiff(j.date_entry, j.date_released || todayStr()) : null;
+const toast = (msg) => { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 2600); };
+
+/* ---------- storage: Firebase when configured, otherwise this browser ---------- */
+const LS_KEY = "emrMotorpoolJobs";
+const store = {
+  live: false,
+  async init() {
+    if (firebaseConfig.apiKey) {
+      try {
+        await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+        await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        db.collection(COLLECTION).onSnapshot((snap) => {
+          data = snap.docs.map((d) => d.data());
+          this.live = true; setConn(true); render();
+        }, (err) => { console.error(err); this.fallback("Firebase error, using offline copy"); });
+        return;
+      } catch (e) { console.error(e); this.fallback("Could not reach Firebase, using offline copy"); return; }
+    }
+    this.fallback();
+  },
+  fallback(msg) {
+    this.live = false; db = null;
+    try { data = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch { data = []; }
+    setConn(false); render(); if (msg) toast(msg);
+  },
+  async save(job) {
+    job.updated_at = new Date().toISOString();
+    if (this.live) { await db.collection(COLLECTION).doc(job.ref).set(job); }
+    else {
+      const i = data.findIndex((d) => d.ref === job.ref);
+      if (i >= 0) data[i] = job; else data.push(job);
+      localStorage.setItem(LS_KEY, JSON.stringify(data)); render();
+    }
+  },
+  async saveMany(jobs) {
+    if (this.live) {
+      const b = db.batch();
+      jobs.forEach((j) => { j.updated_at = new Date().toISOString(); b.set(db.collection(COLLECTION).doc(j.ref), j); });
+      await b.commit();
+    } else { jobs.forEach((j) => data.push(j)); localStorage.setItem(LS_KEY, JSON.stringify(data)); render(); }
+  },
+  async remove(ref) {
+    if (this.live) await db.collection(COLLECTION).doc(ref).delete();
+    else { data = data.filter((d) => d.ref !== ref); localStorage.setItem(LS_KEY, JSON.stringify(data)); render(); }
+  }
+};
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+function setConn(live) { const c = $("#conn"); c.className = "conn " + (live ? "live" : "off"); $("#connTxt").textContent = live ? "Live · Firebase" : "Offline · this browser"; }
+
+/* ---------- rendering ---------- */
+function render() { renderFlow(); renderSummary(); renderStats(); renderLoad(); renderFilters(); renderJobs(); $("#btnSeed").hidden = !unlocked || SEED.every((s) => data.some((d) => d.ref === s.ref)); }
+
+function renderFlow() {
+  $("#flow").innerHTML = STATUSES.map((s) => {
+    const n = data.filter((d) => d.status === s.k).length;
+    return `<button class="stage${statusFilter === s.k ? " on" : ""}" style="--c:${s.c}" data-k="${esc(s.k)}" aria-pressed="${statusFilter === s.k}"><div class="n">${n}</div><div class="l">${esc(s.k)}</div></button>`;
+  }).join("");
+}
+
+function renderSummary() {
+  const open = data.filter((d) => !CLOSED.has(d.status));
+  const cols = STATUSES.filter((s) => !CLOSED.has(s.k)).map((s) => s.k);
+  const short = {"Pending":"Pending","Waiting for Parts":"Parts","Waiting for Manpower":"Manpower","Ongoing":"Ongoing","For Testing":"Testing"};
+  const row = (label, list, tot) => `<tr${tot ? ' class="tot"' : ""}><td>${esc(label)}</td>${cols.map((k) => `<td class="n">${list.filter((d) => d.status === k).length || "—"}</td>`).join("")}<td class="n"><b>${list.length}</b></td></tr>`;
+  $("#sumTbl").innerHTML = `<thead><tr><th>Location</th>${cols.map((k) => `<th class="n">${short[k]}</th>`).join("")}<th class="n">Total</th></tr></thead><tbody>` +
+    LOCATIONS.map((l) => row(l, open.filter((d) => d.location === l))).join("") + row("Total", open, true) + "</tbody>";
+}
+
+function renderStats() {
+  const open = data.filter((d) => !CLOSED.has(d.status));
+  const old = open.filter((d) => (daysOpen(d) ?? 0) > OLD_DAYS);
+  const rel = data.filter((d) => d.status === "Released" && d.date_entry && d.date_released);
+  const avg = rel.length ? (rel.reduce((a, d) => a + daysOpen(d), 0) / rel.length) : null;
+  const noEntry = open.filter((d) => !d.date_entry).length;
+  const partWait = open.filter((d) => d.status === "Waiting for Parts" && d.date_part_requested).map((d) => dayDiff(d.date_part_requested, todayStr()));
+  const relToday = data.filter((d) => d.date_released === todayStr()).length;
+  $("#stats").innerHTML = [
+    {k:`Open over ${OLD_DAYS} days`, v: old.length, bad: old.length > 0},
+    {k:"Average turnaround, released (days)", v: avg == null ? "—" : avg.toFixed(1)},
+    {k:"Longest wait for parts (days)", v: partWait.length ? Math.max(...partWait) : "—"},
+    {k:"Released today", v: relToday},
+    {k:"Open jobs missing date of entry", v: noEntry},
+    {k:"Open jobs with no manpower assigned", v: open.filter((d) => !d.manpower).length}
+  ].map((s) => `<div class="stat${s.bad ? " bad" : ""}"><div class="v">${s.v}</div><div class="k">${esc(s.k)}</div></div>`).join("");
+}
+
+function renderLoad() {
+  const open = data.filter((d) => !CLOSED.has(d.status));
+  const count = new Map();
+  open.forEach((d) => splitNames(d.manpower).forEach((n) => count.set(n, (count.get(n) || 0) + 1)));
+  const techs = PERSONNEL.filter((p) => TECH_GROUPS.includes(p.g));
+  const rows = [...count].map(([n, c]) => ({n, c, p: (PERSONNEL.find((x) => x.n === n) || {}).p || ""})).sort((a, b) => b.c - a.c || a.n.localeCompare(b.n));
+  const free = techs.filter((p) => !count.has(p.n)).length;
+  $("#loadNote").textContent = rows.length
+    ? `Counts open jobs where the person is listed under Manpower. ${free} of ${techs.length} technicians have no open job assigned.`
+    : `No manpower assigned to open jobs yet. Open a job and pick names under Manpower.`;
+  $("#load").innerHTML = rows.map((r) => `<div><span class="who">${esc(r.n)}<small>${esc(r.p)}</small></span><b>${r.c}</b></div>`).join("");
+}
+
+/* manpower picker */
+let mpSel = [];
+function drawMp() {
+  $("#manpower").value = mpSel.join(", ");
+  $("#mpChips").innerHTML = mpSel.length ? mpSel.map((n, i) => { const p = PERSONNEL.find((x) => x.n === n); return `<span class="chip${unlocked ? "" : " ro"}">${esc(n)}${p ? ` <small>${esc(p.p)}</small>` : ""}${unlocked ? `<button type="button" data-i="${i}" aria-label="Remove ${esc(n)}">×</button>` : ""}</span>`; }).join("") : '<span class="blank" style="font-size:12px">No one assigned yet</span>';
+  const sec = $("#section").value;
+  const order = [...PERSON_GROUPS].sort((a, b) => (b === sec) - (a === sec));
+  $("#mpPick").innerHTML = `<option value="">${unlocked ? "Add a person…" : "Unlock editing to assign"}</option>` +
+    order.map((g) => `<optgroup label="${esc(g)}${g === sec ? " (this section)" : ""}">${PERSONNEL.filter((p) => p.g === g && !mpSel.includes(p.n)).map((p) => `<option value="${esc(p.n)}">${esc(p.n)} · ${esc(p.p)}</option>`).join("")}</optgroup>`).join("") +
+    `<option value="__other">Someone not on the list…</option>`;
+}
+$("#mpChips").addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (!b) return; mpSel.splice(Number(b.dataset.i), 1); drawMp(); });
+$("#mpPick").addEventListener("change", (e) => {
+  let v = e.target.value; if (!v) return;
+  if (v === "__other") { v = (prompt("Name of the person") || "").trim(); }
+  if (v && !mpSel.includes(v)) mpSel.push(v);
+  drawMp();
+});
+$("#section").addEventListener("change", drawMp);
+
+function fillSel(sel, label, vals) { const cur = sel.value; sel.innerHTML = `<option value="">${label}</option>` + vals.map((v) => `<option>${esc(v)}</option>`).join(""); sel.value = vals.includes(cur) ? cur : ""; }
+function renderFilters() {
+  const uniq = (f) => [...new Set(data.map((d) => d[f]).filter(Boolean))].sort();
+  fillSel($("#fBu"), "All business units", [...uniq("business_unit"), "(Unassigned)"]);
+  fillSel($("#fLoc"), "All locations", LOCATIONS);
+  fillSel($("#fSec"), "All sections", [...new Set([...SECTIONS, ...uniq("section")])]);
+  const used = [...new Set(data.flatMap((d) => splitNames(d.manpower)))];
+  fillSel($("#fMp"), "All manpower", [...new Set([...PERSONNEL.filter((p) => TECH_GROUPS.includes(p.g)).map((p) => p.n), ...used])].sort());
+  $("#buList").innerHTML = [...new Set(["BBC","BBB","RMC","SCM","AP", ...uniq("business_unit")])].map((v) => `<option value="${esc(v)}">`).join("");
+  $("#siteList").innerHTML = [...new Set(["Pulilan Motorpool", ...uniq("site")])].map((v) => `<option value="${esc(v)}">`).join("");
+  $("#secList").innerHTML = [...new Set([...SECTIONS, ...uniq("section")])].map((v) => `<option value="${esc(v)}">`).join("");
+}
+
+const COLS = [
+  {k:"ref", l:"Ref"},
+  {k:"status", l:"Status"},
+  {k:"business_unit", l:"Business unit"},
+  {k:"unit", l:"Unit description"},
+  {k:"location", l:"Location / site"},
+  {k:"section", l:"Section"},
+  {k:"job_request", l:"Job request"},
+  {k:"job_order", l:"JO no."},
+  {k:"manpower", l:"Manpower"},
+  {k:"date_entry", l:"Date / time in"},
+  {k:"parts_needed", l:"Parts needed"},
+  {k:"date_part_requested", l:"Part requested"},
+  {k:"date_part_arrived", l:"Part arrived"},
+  {k:"date_finished", l:"Finished"},
+  {k:"date_released", l:"Released"},
+  {k:"days", l:"Days", n:true},
+  {k:"remarks", l:"Remarks"}
+];
+
+function filtered() {
+  const q = $("#q").value.trim().toLowerCase();
+  const bu = $("#fBu").value, loc = $("#fLoc").value, sec = $("#fSec").value, mp = $("#fMp").value, showDone = $("#fDone").checked;
+  let list = data.filter((d) => {
+    if (statusFilter) { if (d.status !== statusFilter) return false; }
+    else if (!showDone && d.status === "Released") return false;
+    if (bu === "(Unassigned)" ? d.business_unit : (bu && d.business_unit !== bu)) return false;
+    if (loc && d.location !== loc) return false;
+    if (sec && d.section !== sec) return false;
+    if (mp && !splitNames(d.manpower).includes(mp)) return false;
+    if (q && !FIELDS.some((f) => String(d[f] ?? "").toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const val = (d) => sortKey === "days" ? daysOpen(d) : sortKey === "status" ? STATUSES.findIndex((s) => s.k === d.status) : d[sortKey];
+  return list.sort((a, b) => {
+    const x = val(a), y = val(b);
+    if (x == null || x === "") return 1; if (y == null || y === "") return -1;
+    return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), undefined, {numeric:true})) * sortDir;
+  });
+}
+
+function cell(d, c) {
+  const b = (v) => v ? esc(v) : '<span class="blank">—</span>';
+  switch (c.k) {
+    case "status": return `<td><span class="pill" style="--c:${statusColor(d.status)}">${esc(d.status)}</span>${d.priority === "High" ? '<div class="pri-High" style="font-size:11px;margin-top:3px">High priority</div>' : ""}</td>`;
+    case "unit": return `<td class="unit">${b(d.unit)}</td>`;
+    case "location": return `<td>${b(d.location)}${d.site && d.site !== "Pulilan Motorpool" ? `<div style="font-size:11px;color:var(--muted)">${esc(d.site)}</div>` : ""}</td>`;
+    case "manpower": return `<td style="min-width:150px">${splitNames(d.manpower).map(esc).join("<br>") || '<span class="blank">—</span>'}</td>`;
+    case "job_request": case "remarks": return `<td class="wide">${b(d[c.k])}</td>`;
+    case "parts_needed": return `<td class="wide">${b(d.parts_needed)}${d.supplier ? `<div style="font-size:11px;color:var(--muted)">${esc(d.supplier)}${d.part_price_php ? " · " + peso(d.part_price_php) + (d.part_qty ? " × " + d.part_qty : "") : ""}</div>` : ""}</td>`;
+    case "date_entry": return `<td class="date">${d.date_entry ? fmtDate(d.date_entry) : '<span class="blank">—</span>'}${d.time_in ? `<div style="font-size:11px;color:var(--muted)">${fmtTime(d.time_in)}</div>` : ""}</td>`;
+    case "date_finished": return `<td class="date">${d.date_finished ? fmtDate(d.date_finished) : '<span class="blank">—</span>'}${d.time_finished ? `<div style="font-size:11px;color:var(--muted)">${fmtTime(d.time_finished)}</div>` : ""}</td>`;
+    case "date_released": return `<td class="date">${d.date_released ? fmtDate(d.date_released) : '<span class="blank">—</span>'}${d.time_released ? `<div style="font-size:11px;color:var(--muted)">${fmtTime(d.time_released)}</div>` : ""}</td>`;
+    case "date_part_requested": case "date_part_arrived": return `<td class="date">${d[c.k] ? fmtDate(d[c.k]) : '<span class="blank">—</span>'}</td>`;
+    case "days": { const n = daysOpen(d); return `<td class="n"><span class="days${n > OLD_DAYS && d.status !== "Released" ? " old" : ""}">${n ?? '<span class="blank">—</span>'}</span></td>`; }
+    default: return `<td>${b(d[c.k])}</td>`;
+  }
+}
+
+function renderJobs() {
+  $("#jobHead").innerHTML = COLS.map((c) => `<th class="${c.n ? "n" : ""}" data-k="${c.k}" aria-sort="${sortKey === c.k ? (sortDir > 0 ? "ascending" : "descending") : "none"}">${c.l}</th>`).join("");
+  const list = filtered();
+  $("#jobBody").innerHTML = list.length
+    ? list.map((d) => `<tr data-ref="${esc(d.ref)}">${COLS.map((c) => cell(d, c)).join("")}</tr>`).join("")
+    : `<tr><td colspan="${COLS.length}" style="text-align:center;padding:28px;color:var(--muted)">${data.length ? "No jobs match these filters." : (unlocked ? "No jobs yet. Use “Load 14 Oct list” or “Add job”." : "No jobs yet. Unlock editing to add jobs.")}</td></tr>`;
+  $("#count").textContent = `${list.length} of ${data.length} jobs`;
+}
+
+/* ---------- form ---------- */
+function nextRef() {
+  const max = data.reduce((m, d) => Math.max(m, Number(String(d.ref).replace(/\D/g, "")) || 0), 0);
+  return "EMR-" + String(max + 1).padStart(3, "0");
+}
+function openJob(ref) {
+  const d = ref ? data.find((x) => x.ref === ref) : null;
+  editingRef = d ? d.ref : null;
+  $("#status").innerHTML = STATUSES.map((s) => `<option>${s.k}</option>`).join("");
+  const job = d || {ref: nextRef(), status: "Pending", priority: "Normal", location: "Inside Motorpool", site: "Pulilan Motorpool", date_entry: todayStr(), time_in: nowTime()};
+  FIELDS.forEach((f) => { const el = document.getElementById(f); if (el) el.value = job[f] ?? (f === "priority" ? "Normal" : ""); });
+  $("#dlgTitle").textContent = d ? (d.unit || "Job") : "Add job";
+  $("#dlgRef").textContent = job.ref;
+  $("#dlg").dataset.ref = job.ref;
+  const h = (d && d.history) || [];
+  $("#histBox").hidden = !h.length;
+  $("#hist").innerHTML = h.slice().reverse().map((e) => `<li>${esc(e.status)} · ${esc(new Date(e.at).toLocaleString("en-PH",{dateStyle:"medium",timeStyle:"short"}))}</li>`).join("");
+  $("#dlg").querySelectorAll("input,select,textarea").forEach((el) => el.disabled = !unlocked);
+  mpSel = splitNames(job.manpower); drawMp();
+  $("#btnSave").hidden = !unlocked; $("#btnDel").hidden = !unlocked || !d; $("#lockedHint").hidden = unlocked;
+  $("#dlg").showModal();
+}
+async function saveJob() {
+  const ref = $("#dlg").dataset.ref;
+  const prev = data.find((x) => x.ref === ref);
+  const job = {...(prev || {}), ref};
+  FIELDS.forEach((f) => { const el = document.getElementById(f); if (!el || f === "ref") return; let v = el.value.trim(); if (el.type === "number") v = v === "" ? null : Number(v); job[f] = v === "" ? null : v; });
+  if (!job.unit) { toast("Enter the unit description."); $("#unit").focus(); return; }
+  if (job.date_released && job.status !== "Released") { job.status = "Released"; toast("Date released is set, so the status is now Released."); }
+  else if (job.date_finished && !CLOSED.has(job.status)) { job.status = "Finished"; toast("Date finished is set, so the status is now Finished."); }
+  if (!prev || prev.status !== job.status) job.history = [...(prev?.history || []), {status: job.status, at: new Date().toISOString()}];
+  try { await store.save(job); $("#dlg").close(); toast(prev ? "Job saved." : "Job added."); }
+  catch (e) { console.error(e); toast("Could not save. Check the connection and try again."); }
+}
+
+/* ---------- events ---------- */
+$("#flow").addEventListener("click", (e) => { const b = e.target.closest(".stage"); if (!b) return; statusFilter = statusFilter === b.dataset.k ? "" : b.dataset.k; renderFlow(); renderJobs(); });
+["#q","#fBu","#fLoc","#fSec","#fMp","#fDone"].forEach((s) => $(s).addEventListener(s === "#q" ? "input" : "change", renderJobs));
+$("#jobHead").addEventListener("click", (e) => { const th = e.target.closest("th"); if (!th) return; const k = th.dataset.k; if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = k === "days" ? -1 : 1; } renderJobs(); });
+$("#jobBody").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-ref]"); if (tr) openJob(tr.dataset.ref); });
+$("#btnNew").addEventListener("click", () => { if (!unlocked) return toast("Unlock editing to add a job."); openJob(null); });
+$("#btnCancel").addEventListener("click", () => $("#dlg").close());
+$("#btnSave").addEventListener("click", saveJob);
+$("#btnDel").addEventListener("click", async () => { const ref = $("#dlg").dataset.ref; if (!confirm(`Delete ${ref}? This cannot be undone.`)) return; await store.remove(ref); $("#dlg").close(); toast("Job deleted."); });
+$("#btnLock").addEventListener("click", () => {
+  if (unlocked) { unlocked = false; $("#btnLock").textContent = "Unlock editing"; render(); return toast("Editing locked."); }
+  const p = prompt("Enter PIN to unlock editing"); if (p === null) return;
+  if (p === EDIT_PIN) { unlocked = true; $("#btnLock").textContent = "Lock editing"; render(); toast("Editing unlocked."); } else toast("Wrong PIN.");
+});
+$("#btnSeed").addEventListener("click", async () => {
+  const add = SEED.filter((s) => !data.some((d) => d.ref === s.ref)).map((s) => ({priority: "Normal", ...s, history: [{status: s.status, at: "2026-10-14T00:00:00+08:00"}]}));
+  if (!add.length) return toast("The 14 Oct list is already loaded.");
+  if (!confirm(`Load ${add.length} jobs from the 14 Oct list? Jobs already here are skipped.`)) return;
+  await store.saveMany(add); toast(`${add.length} jobs loaded.`);
+});
+$("#btnCsv").addEventListener("click", () => {
+  const cols = [...FIELDS, "days_open"];
+  const rows = [cols, ...data.map((d) => cols.map((c) => c === "days_open" ? (daysOpen(d) ?? "") : (d[c] ?? "")))];
+  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], {type: "text/csv"}));
+  a.download = `motorpool-jobs-${todayStr()}.csv`; a.click();
+});
+$("#btnPrint").addEventListener("click", () => {
+  const open = data.filter((d) => !CLOSED.has(d.status));
+  const relToday = data.filter((d) => d.date_released === todayStr());
+  const tbl = (list) => `<table><thead><tr><th>#</th><th>Unit</th><th>BU</th><th>Job request</th><th>Section</th><th>Manpower</th><th>Date in</th><th class="n">Days</th><th>Status</th><th>Remarks</th></tr></thead><tbody>` +
+    list.map((d, i) => `<tr><td>${i+1}</td><td><b>${esc(d.unit)}</b>${d.location === "Project Site" && d.site ? "<br>" + esc(d.site) : ""}</td><td>${esc(d.business_unit || "—")}</td><td>${esc(d.job_request || "")}${d.parts_needed ? "<br><i>Parts: " + esc(d.parts_needed) + "</i>" : ""}</td><td>${esc(d.section || "—")}</td><td>${splitNames(d.manpower).map(esc).join("<br>") || "—"}</td><td>${d.date_entry ? fmtDate(d.date_entry) : "—"}${d.time_in ? " " + fmtTime(d.time_in) : ""}</td><td class="n">${daysOpen(d) ?? "—"}</td><td>${esc(d.status)}</td><td>${esc(d.remarks || "")}</td></tr>`).join("") + "</tbody></table>";
+  const byLoc = LOCATIONS.map((l) => { const list = open.filter((d) => d.location === l).sort((a, b) => STATUSES.findIndex((s) => s.k === a.status) - STATUSES.findIndex((s) => s.k === b.status)); return list.length ? `<h3>${esc(l)} (${list.length})</h3>${tbl(list)}` : ""; }).join("");
+  const now = new Date();
+  $("#printArea").innerHTML = `<h1>EMR Motorpool Job Status Report</h1>
+    <div class="sub">Bigben Group of Companies · Motorpool Division · As of ${now.toLocaleDateString("en-PH",{dateStyle:"long"})}, ${now.toLocaleTimeString("en-PH",{timeStyle:"short"})} · ${open.length} open jobs</div>
+    ${byLoc}
+    ${relToday.length ? `<h3>Released today (${relToday.length})</h3><table><thead><tr><th>Unit</th><th>BU</th><th>Job request</th><th>Date in</th><th>Finished</th><th>Released</th><th class="n">Days</th></tr></thead><tbody>${relToday.map((d) => `<tr><td><b>${esc(d.unit)}</b></td><td>${esc(d.business_unit || "—")}</td><td>${esc(d.job_request || "")}</td><td>${d.date_entry ? fmtDate(d.date_entry) : "—"}</td><td>${fmtDate(d.date_finished)} ${fmtTime(d.time_finished)}</td><td>${fmtDate(d.date_released)} ${fmtTime(d.time_released)}</td><td class="n">${daysOpen(d) ?? "—"}</td></tr>`).join("")}</tbody></table>` : ""}
+    <div class="sig">
+      <div>Prepared by:<div class="ln"><b>Kristyle Grace Cantuba</b><br>Junior Motorpool Supervisor</div></div>
+      <div>Noted by:<div class="ln"><b>Jose Jonel Climaco</b><br>EMR Manager</div></div>
+      <div>Approved by:<div class="ln"><b>Engr. Michael Rodulfo</b><br>Division Engineer</div></div>
+    </div>`;
+  window.print();
+});
+
+store.init();
+</script>
+</body>
+</html>
