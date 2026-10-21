@@ -1,4 +1,4 @@
-<index.html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -48,7 +48,9 @@
   td{padding:8px 9px;border-bottom:1px solid #eee;vertical-align:top}
   tr:hover td{background:#fcfaf3}
   .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;white-space:nowrap}
-  .num{text-align:right;white-space:nowrap}
+  .num{text-align:right}
+  /* Every cell wraps its own text instead of overflowing or stretching the table */
+  td,th{white-space:normal;overflow-wrap:anywhere;word-break:break-word}
   .age-bad{color:var(--bad);font-weight:bold}
   .empty{padding:40px;text-align:center;color:var(--muted)}
 
@@ -77,6 +79,8 @@
   @media(max-width:640px){.form{grid-template-columns:1fr}}
 
   .form label.pf-up{cursor:pointer;padding:6px 12px;border-radius:4px;font-size:13px;display:inline-block;color:var(--maroon-dk);font-weight:bold}
+  .paper{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .paperSel{padding:7px}
   .pf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
   .pf-list li{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);padding:5px 8px;border-radius:4px}
   .pf-list li small{color:var(--muted);margin-left:auto}
@@ -116,7 +120,10 @@
   .pt th{padding:3px 5px;font-size:12pt;position:static}
   .pt td{padding:3px 5px;border:1px solid #bbb;line-height:1.25}
   .pt tr{page-break-inside:avoid;break-inside:avoid}
-  .pt td:nth-child(5),.pt .mg{white-space:nowrap}
+  .pt{table-layout:fixed}
+  .pt td.num,.pt .mg{overflow-wrap:break-word;word-break:normal}
+  .pt th{overflow-wrap:normal;word-break:normal}
+  .jo-info div,.ph,.gt span,.sigs div{overflow-wrap:anywhere;word-break:break-word}
   .pt thead{display:table-header-group}
   .pt tfoot td{font-weight:bold;background:#f6edcf}
   .gt{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px 22px;padding:5px 8px;border-top:2px solid #C9A227;font-size:13pt}
@@ -138,7 +145,6 @@
   .sign-on > div .sline{border-top:1px solid #000;margin-bottom:2px}
   .measure{position:absolute;left:-10000px;top:0;width:194mm;background:#fff;font-size:14px}
   @media print{
-    @page{size:A4 portrait;margin:10mm}
     header .grow~*,.toolbar,.act,.pipeline{display:none!important}
     body{background:#fff}
     th{background:#7A1F2B!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -150,6 +156,7 @@
   }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<style id="pageStyle">@media print{@page{size:A4 portrait;margin:10mm}}</style>
 </head>
 <body>
 
@@ -176,6 +183,8 @@
     <div class="grow"></div>
     <button class="btn-ghost" id="btnImport">Import past billings</button>
     <button class="btn-ghost" id="btnCsv">Export CSV</button>
+    <label class="paper">Paper
+      <select id="paper" class="paperSel"><option value="portrait">A4 Portrait</option><option value="landscape">A4 Landscape</option></select></label>
     <button class="btn-maroon" id="btnPrint">Print report</button>
   </div>
 
@@ -251,6 +260,7 @@
   </form>
   <div class="dlg-f">
     <button class="btn-ghost" id="btnDel" style="margin-right:auto;color:var(--bad)">Delete</button>
+    <select id="paper2" class="paperSel" title="Paper orientation"><option value="portrait">A4 Portrait</option><option value="landscape">A4 Landscape</option></select>
     <button class="btn-ghost" id="btnPrintOne">Print this JO</button>
     <button class="btn-ghost" id="btnCancel">Cancel</button>
     <button class="btn-maroon" id="btnSave">Save job order</button>
@@ -975,12 +985,12 @@ function joBlock(r){
       ${r.datePaid||(r.proofs||[]).length||r.proofLink?`<div class="w4"><b>Payment:</b>${r.datePaid?"Paid "+esc(r.datePaid):"—"}${(r.proofs||[]).length?` · Proof attached: ${r.proofs.map(m=>esc(m.name)).join(", ")}`:""}${r.proofLink?" · Proof link on file":""}</div>`:""}
     </div>
     <div class="jo-sec"><h4>A. Parts utilized</h4>
-      <table class="pt"><thead><tr><th>#</th><th>Description</th><th>Part no.</th><th>Qty</th><th>Unit</th><th>Unit cost</th><th>Source / PR</th><th>Amount</th></tr></thead>
+      <table class="pt"><colgroup><col style="width:4%"><col style="width:24%"><col style="width:12%"><col style="width:7%"><col style="width:7%"><col style="width:15%"><col style="width:14%"><col style="width:17%"></colgroup><thead><tr><th>#</th><th>Description</th><th>Part no.</th><th>Qty</th><th>Unit</th><th>Unit cost</th><th>Source / PR</th><th>Amount</th></tr></thead>
       <tbody>${partRows}</tbody>
       <tfoot><tr><td colspan="3" style="text-align:right">Total parts</td><td class="num">${parts.length?qtyTot:""}</td><td colspan="3"></td><td class="num">${peso(pTot)}</td></tr></tfoot></table>
     </div>
     <div class="jo-sec"><h4>B. Manpower / labor</h4>
-      <table class="pt"><thead><tr><th>#</th><th>Name</th><th>Position</th><th>Task done</th><th>Date</th><th>Hours</th><th>Rate/hr</th><th>Amount</th></tr></thead>
+      <table class="pt"><colgroup><col style="width:4%"><col style="width:17%"><col style="width:15%"><col style="width:18%"><col style="width:14%"><col style="width:7%"><col style="width:11%"><col style="width:14%"></colgroup><thead><tr><th>#</th><th>Name</th><th>Position</th><th>Task done</th><th>Date</th><th>Hrs</th><th>Rate/hr</th><th>Amount</th></tr></thead>
       <tbody>${persRows}</tbody>
       <tfoot><tr><td colspan="5" style="text-align:right">Total labor</td><td class="num">${pers.length?hrTot:""}</td><td></td><td class="num">${peso(lTot)}</td></tr></tfoot></table>
     </div>
@@ -1021,6 +1031,16 @@ function fitToPage(){
 window.addEventListener("afterprint", ()=>document.documentElement.style.setProperty("--fit",1));
 
 $("#btnImport").onclick = importPastBillings;
+/* Paper orientation (remembered on this computer) */
+function setPaper(o){
+  o = o==="landscape" ? "landscape" : "portrait";
+  document.querySelectorAll(".paperSel").forEach(x=>x.value=o);
+  $("#pageStyle").textContent = `@media print{@page{size:A4 ${o};margin:10mm}}`;
+  try{ localStorage.setItem("paperOrientation", o); }catch(e){}
+}
+document.querySelectorAll(".paperSel").forEach(x=>x.onchange=()=>setPaper(x.value));
+try{ setPaper(localStorage.getItem("paperOrientation")||"portrait"); }catch(e){ setPaper("portrait"); }
+
 $("#btnPrint").onclick = ()=>{
   const list = filtered();
   if(!list.length) return toast("No job orders to print");
